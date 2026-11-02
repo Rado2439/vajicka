@@ -1,0 +1,17 @@
+{
+  "appTitle": "Vajíčka",
+  "timezone": "Europe/Bratislava",
+  "packSize": 10,
+  "packPrice": 3.0,
+  "currency": "€",
+  "deliveryWeekday": 3,
+  "deadlineDaysBefore": 1,
+  "deadlineTime": "20:00",
+  "openNextOn": "deadline",
+  "reminderEnabled": true,
+  "reminderDaysBefore": 2,
+  "reminderTime": "08:00",
+  "defaultQty": 10,
+  "autoSendWithinDays": 3,
+  "people": []
+}

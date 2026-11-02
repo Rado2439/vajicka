@@ -1,0 +1,6 @@
+node_modules/
+data/
+vajicka.zip
+demo/vajicka-demo.html
+people.json
+*.png

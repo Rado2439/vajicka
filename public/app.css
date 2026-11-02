@@ -1,0 +1,241 @@
+/* Vajíčka – komponenty aplikácie nad dizajnovým systémom KROS (korporátny režim).
+   Farby len cez premenné z kros.css. */
+
+:root {
+  --tien: 0 1px 2px rgba(0, 10, 77, .06), 0 8px 24px rgba(0, 10, 77, .06);
+  --obrys: 1px solid var(--kros-ciara);
+  --sirka: 960px;
+}
+
+body { background: var(--kros-pozadie); min-height: 100vh; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--kros-invent-bledo-modra); outline-offset: 2px; }
+
+/* ---------- Hlavička ---------- */
+.top { background: var(--kros-biela); border-bottom: var(--obrys); }
+.top__in {
+  max-width: var(--sirka); margin: 0 auto;
+  /* logo 36 px, ochranná zóna = 18 px dookola */
+  padding: 18px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+}
+.brand { display: flex; align-items: center; gap: 20px; text-decoration: none; }
+.brand .logo { height: 36px; width: auto; display: block; padding: 0; }
+.brand__app {
+  padding-left: 20px; border-left: 1px solid var(--kros-ciara);
+  font-weight: 500; font-size: 1.05rem; color: var(--kros-text-jemny); line-height: 36px;
+}
+.user {
+  display: flex; align-items: center; gap: 10px; border: var(--obrys); background: var(--kros-biela);
+  border-radius: var(--kros-oblost-button); padding: 4px 14px 4px 4px; font-size: var(--kros-male); font-weight: 500;
+}
+.user:hover { background: var(--kros-povrch); }
+.user__avatar {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--kros-modra); color: var(--kros-biela); font-size: .75rem; font-weight: 600; letter-spacing: .02em;
+}
+
+/* ---------- Záložky ---------- */
+.tabs {
+  max-width: var(--sirka); margin: 24px auto 0; padding: 0 16px;
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.tabs button {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 0; border-radius: var(--kros-oblost-button); padding: 10px 20px;
+  background: transparent; color: var(--kros-text-jemny); font-weight: 500; font-size: var(--kros-male);
+}
+.tabs button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tabs button:hover { background: var(--kros-povrch); color: var(--kros-text); }
+.tabs button[aria-current="page"] { background: var(--kros-modra); color: var(--kros-biela); }
+
+/* ---------- Stránka ---------- */
+.page { max-width: var(--sirka); margin: 0 auto; padding: 24px 16px 64px; outline: none; }
+.hero { margin: 8px 0 28px; }
+.hero h1 { font-size: clamp(1.9rem, 4.6vw, 2.8rem); margin: 0; }
+.hero .kros-ukazovatel { margin: 18px 0 14px; max-width: calc(50vw - 50% + 26rem); }
+.hero p { margin: 0; color: var(--kros-text-jemny); }
+.hero p b { color: var(--kros-text); font-weight: 600; }
+
+.grid { display: grid; gap: 20px; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; }
+.card {
+  background: var(--kros-biela); border: var(--obrys); border-radius: var(--kros-oblost-karta);
+  padding: 24px; box-shadow: var(--tien);
+}
+.card--plocha { background: var(--kros-povrch); border-color: transparent; box-shadow: none; }
+.card h2 { font-size: 1.25rem; margin: 0 0 6px; }
+.card + .card { margin-top: 20px; }
+.muted { color: var(--kros-text-jemny); }
+.small { font-size: var(--kros-male); }
+.kicker { font-size: var(--kros-kicker); font-weight: 500; letter-spacing: var(--kros-kerning); text-transform: uppercase; color: var(--kros-text-jemny); margin: 0 0 8px; }
+
+/* ---------- Stepper množstva ---------- */
+.stepper { display: flex; align-items: center; justify-content: center; gap: 24px; margin: 18px 0 6px; }
+.round {
+  width: 56px; height: 56px; border-radius: 50%; border: 1.5px solid var(--kros-modra); background: var(--kros-biela);
+  color: var(--kros-modra); font-weight: 500; font-size: .95rem; display: grid; place-items: center; flex: none;
+  transition: background .12s, color .12s, transform .06s;
+}
+.round:hover { background: var(--kros-modra); color: var(--kros-biela); }
+.round:active { transform: scale(.95); }
+.qty { text-align: center; min-width: 0; }
+.qty__num {
+  display: block; min-width: 3.4ch; border-bottom: 2px solid var(--kros-ciara);
+  font: 600 3.4rem/1.1 var(--kros-font); color: var(--kros-text); text-align: center; font-variant-numeric: tabular-nums;
+}
+.qty__unit { display: block; font-size: var(--kros-male); color: var(--kros-text-jemny); margin-top: 4px; }
+.chips { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 14px 0 4px; }
+.chip {
+  border: 1px solid var(--kros-ciara); background: var(--kros-biela); border-radius: var(--kros-oblost-button);
+  padding: 6px 14px; font-size: var(--kros-male); font-weight: 500;
+}
+.chip:hover, .chip[aria-pressed="true"] { background: var(--kros-modra); color: var(--kros-biela); border-color: var(--kros-modra); }
+.total { display: flex; justify-content: space-between; align-items: baseline; border-top: var(--obrys); margin-top: 20px; padding-top: 16px; }
+.total strong { font-size: 1.6rem; font-weight: 600; }
+.save { min-height: 1.6em; text-align: center; font-size: var(--kros-male); color: var(--kros-text-jemny); margin-top: 6px; }
+.save--ok::before { content: "✓ "; }
+
+/* Košík s vajíčkami */
+.eggs { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; min-height: 22px; margin-top: 4px; }
+.eggs i { width: 12px; height: 15px; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; background: var(--kros-doplnkova-bezova); display: block; animation: pop .25s ease-out; }
+.eggs i.half { background: var(--kros-povrch); }
+@keyframes pop { from { transform: scale(.3); opacity: 0; } }
+
+/* ---------- Stavy ---------- */
+.stav {
+  display: inline-block; font-size: .72rem; font-weight: 500; letter-spacing: var(--kros-kerning); text-transform: uppercase;
+  padding: .22rem .65rem; border-radius: var(--kros-oblost-button); background: var(--kros-povrch); color: var(--kros-modra); white-space: nowrap;
+}
+.stav--pozor { background: var(--kros-doplnkova-bezova); }
+.stav--tmavy { background: var(--kros-modra); color: var(--kros-biela); }
+.alert { border-radius: var(--kros-r2); padding: 12px 16px; background: var(--kros-doplnkova-bezova); color: var(--kros-modra); font-size: var(--kros-male); }
+.alert--info { background: var(--kros-povrch); }
+
+/* Prepínač platby */
+.pay { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500; font-size: var(--kros-male); user-select: none; }
+.pay input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.pay__box {
+  width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--kros-doplnkova-modra); background: var(--kros-biela);
+  display: grid; place-items: center; flex: none; transition: background .12s;
+}
+.pay__box svg { width: 14px; height: 14px; stroke: var(--kros-biela); stroke-width: 3; fill: none; opacity: 0; }
+.pay input:checked + .pay__box { background: var(--kros-modra); border-color: var(--kros-modra); }
+.pay input:checked + .pay__box svg { opacity: 1; }
+.pay input:focus-visible + .pay__box { outline: 2px solid var(--kros-invent-bledo-modra); outline-offset: 2px; }
+.pay input:disabled + .pay__box { border-color: var(--kros-ciara); }
+.pay input:disabled ~ * { cursor: default; }
+.pay:has(input:disabled) { cursor: default; }
+
+/* ---------- Tlačidlá ---------- */
+.kros-btn { padding: .7rem 1.5rem; font-size: var(--kros-male); }
+.kros-btn:disabled { opacity: .5; cursor: default; }
+.kros-btn--obrys:hover { background: var(--kros-povrch); }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* ---------- Súhrn ---------- */
+.seg { display: inline-flex; background: var(--kros-povrch); border-radius: var(--kros-oblost-button); padding: 4px; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; border-radius: var(--kros-oblost-button); padding: 8px 16px; font-size: var(--kros-male); font-weight: 500; color: var(--kros-text-jemny); }
+.seg button[aria-pressed="true"] { background: var(--kros-biela); color: var(--kros-text); box-shadow: var(--tien); }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 20px; }
+.stat { background: var(--kros-povrch); border-radius: var(--kros-r2); padding: 14px 16px; }
+.stat span { display: block; font-size: .78rem; color: var(--kros-text-jemny); }
+.stat b { display: block; font-size: 1.45rem; font-weight: 600; margin-top: 2px; }
+.stat small { display: block; font-size: .75rem; color: var(--kros-text-jemny); }
+.stat--pozor { background: var(--kros-doplnkova-bezova); }
+.stat--pozor span, .stat--pozor small { color: var(--kros-modra); }
+
+.tbl { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.tbl th { text-align: left; font-size: .72rem; font-weight: 500; letter-spacing: var(--kros-kerning); text-transform: uppercase; color: var(--kros-text-jemny); padding: 0 10px 10px; border-bottom: var(--obrys); }
+.tbl td { padding: 12px 10px; border-bottom: var(--obrys); vertical-align: middle; }
+.tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl tr.me td { background: var(--kros-povrch); }
+.tbl tr.me td:first-child { border-radius: 12px 0 0 12px; }
+.tbl tr.me td:last-child { border-radius: 0 12px 12px 0; }
+.tbl tr.unpaid td.name { box-shadow: inset 3px 0 0 var(--kros-doplnkova-bezova); }
+.tbl tr.paid td.name { box-shadow: inset 3px 0 0 var(--kros-modra); }
+.tbl tfoot td { border-bottom: 0; font-weight: 600; padding-top: 14px; }
+.name b { font-weight: 500; }
+.name small { display: block; font-size: .75rem; color: var(--kros-text-jemny); }
+.paycell { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+
+.teams { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.teams__ico { width: 40px; height: 40px; border-radius: 12px; background: var(--kros-biela); display: grid; place-items: center; flex: none; }
+.teams__ico svg { width: 22px; height: 22px; fill: none; stroke: var(--kros-modra); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- Výber mena ---------- */
+.people { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.person {
+  display: flex; align-items: center; gap: 12px; text-align: left; border: var(--obrys); background: var(--kros-biela);
+  border-radius: var(--kros-r2); padding: 12px 14px; font-weight: 500;
+}
+.person:hover { border-color: var(--kros-modra); }
+.person[aria-pressed="true"] { background: var(--kros-modra); color: var(--kros-biela); border-color: var(--kros-modra); }
+.person .user__avatar { background: var(--kros-povrch); color: var(--kros-modra); }
+.person[aria-pressed="true"] .user__avatar { background: var(--kros-biela); }
+
+/* ---------- História ---------- */
+.hist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.hist button {
+  width: 100%; border: var(--obrys); background: var(--kros-biela); border-radius: var(--kros-r2);
+  padding: 14px 18px; display: grid; grid-template-columns: 1fr auto auto; gap: 16px; align-items: center; text-align: left;
+}
+.hist button:hover { border-color: var(--kros-modra); }
+.hist .d { font-weight: 600; }
+.hist .chev { color: var(--kros-text-jemny); }
+.back { border: 0; background: none; padding: 0; color: var(--kros-text-jemny); font-weight: 500; font-size: var(--kros-male); margin-bottom: 8px; }
+.back:hover { color: var(--kros-text); }
+
+/* ---------- Správa ---------- */
+.adm { display: grid; grid-template-columns: 1fr 1.3fr auto auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: var(--obrys); }
+.adm:last-of-type { border-bottom: 0; }
+.kros-vstup { min-width: 0; font-size: .9rem; }
+.kros-vstup:focus { outline: none; border-color: var(--kros-modra); }
+.icon-btn { width: 38px; height: 38px; border-radius: 50%; border: var(--obrys); background: var(--kros-biela); display: grid; place-items: center; }
+.icon-btn:hover:not(:disabled) { border-color: var(--kros-modra); }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+.icon-btn svg { width: 16px; height: 16px; stroke: var(--kros-modra); stroke-width: 2; fill: none; stroke-linecap: round; }
+.sup { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--kros-text-jemny); cursor: pointer; white-space: nowrap; }
+.sup input { accent-color: var(--kros-modra); width: 16px; height: 16px; }
+.addrow { display: grid; grid-template-columns: 1fr 1.3fr auto; gap: 10px; margin-top: 16px; }
+.msg { min-height: 1.5em; font-size: var(--kros-male); margin-top: 10px; }
+
+.empty { text-align: center; padding: 40px 16px; color: var(--kros-text-jemny); }
+
+/* ---------- Mobil ---------- */
+@media (max-width: 760px) {
+  .grid { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card { padding: 18px; }
+}
+@media (max-width: 640px) {
+  .top__in { padding: 18px 16px; }
+  .brand__app { display: none; }
+  .user__name { max-width: 9ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* záložky ako spodná lišta */
+  .tabs {
+    position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; margin: 0;
+    background: var(--kros-biela); border-top: var(--obrys);
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); gap: 0; flex-wrap: nowrap;
+  }
+  .tabs button { flex: 1; flex-direction: column; gap: 2px; padding: 6px 2px; font-size: .7rem; border-radius: 12px; }
+  .tabs button[aria-current="page"] { background: var(--kros-povrch); color: var(--kros-text); }
+  .page { padding: 20px 16px 110px; }
+  .tbl { font-size: .85rem; }
+  .tbl th, .tbl td { padding-left: 6px; padding-right: 6px; }
+  .tbl .hide-m { display: none; }
+  .adm { grid-template-columns: 1fr auto auto; }
+  .adm .email { grid-column: 1 / -1; order: 5; }
+  .addrow { grid-template-columns: 1fr; }
+  .hist button { grid-template-columns: 1fr auto; }
+  .hist .chev { display: none; }
+}
+.person[aria-pressed="true"] .muted { color: var(--kros-korporatna-belasa); }
+@media (max-width: 480px) {
+  .stepper { gap: 8px; }
+  .round { width: 48px; height: 48px; font-size: .85rem; }
+  .qty__num { font-size: 2.8rem; }
+  .chip { padding: 6px 11px; }
+}

@@ -1,0 +1,343 @@
+/* Generované skriptom nastroje-vyvoj/generuj_web_css.py z
+   znacka/paleta.json. Needituj – zmeny sa pri ďalšom generovaní stratia.
+
+   Režim: korporatny. Obsahuje premenné iba tohto farebného systému, takže
+   sa režimy nedajú zmiešať (dizajn manuál str. 17).
+
+   Fonty: @font-face ukazuje na fonty/Poppins-*.ttf vedľa stránky. Keď
+   tam nie sú, prehliadač použije nainštalovaný Poppins a potom Arial –
+   font-stack v --kros-font to rieši. Nikdy sa nič neťahá z internetu. */
+
+/* Dizajnový systém KROS – generované z znacka/paleta.json. Needituj. */
+@font-face{
+  font-family:'KROS Poppins';
+  font-weight:300;
+  font-style:normal;
+  font-display:swap;
+  src:url('fonty/Poppins-Light.ttf') format('truetype');
+}
+@font-face{
+  font-family:'KROS Poppins';
+  font-weight:500;
+  font-style:normal;
+  font-display:swap;
+  src:url('fonty/Poppins-Medium.ttf') format('truetype');
+}
+@font-face{
+  font-family:'KROS Poppins';
+  font-weight:600;
+  font-style:normal;
+  font-display:swap;
+  src:url('fonty/Poppins-SemiBold.ttf') format('truetype');
+}
+
+:root{
+  /* Iba farby režimu „korporatny“. Farby druhého systému tu zámerne nie sú –
+     keby premenná existovala, niekto by ju použil a režimy by sa zmiešali. */
+  --kros-modra:#000A4D;
+  --kros-biela:#FFFFFF;
+  --kros-korporatna-belasa:#D1DBE8;
+  --kros-invent-bledo-modra:#5AD3FF;
+  --kros-doplnkova-modra:#696B94;
+  --kros-doplnkova-bezova:#F6B696;
+  --kros-doplnkova-bezova-2:#C37350;
+
+  --kros-pozadie:#FFFFFF;
+  --kros-povrch:#D1DBE8;
+  --kros-text:#000A4D;
+  --kros-text-jemny:#696B94;
+  --kros-akcent:#000A4D;
+  --kros-text-na-akcente:#FFFFFF;
+  --kros-ciara:#D1DBE8;
+  --kros-obrys-jemny:#D1DBE8;
+  --kros-stav-plocha:#D1DBE8;
+
+  --kros-font:'KROS Poppins',Poppins,Arial,sans-serif;
+  --kros-h1:3.5rem;
+  --kros-h2:2.5rem;
+  --kros-h3:1.5rem;
+  --kros-telo:1.0rem;
+  --kros-male:0.875rem;
+  --kros-kicker:0.8125rem;
+  --kros-riadok-nadpis:1.14;
+  --kros-riadok-telo:1.6;
+  --kros-kerning:0.075em;
+
+  --kros-r1:0.5rem; --kros-r2:1rem; --kros-r3:1.5rem;
+  --kros-r4:2rem; --kros-r5:3rem; --kros-r6:4rem;
+  --kros-oblost-button:999px;
+  --kros-oblost-karta:1.5rem;
+  --kros-oblost-vstup:999px;
+  --kros-sirka-obsahu:1200px;
+}
+
+*,*::before,*::after{box-sizing:border-box;}
+body{
+  margin:0;
+  font-family:var(--kros-font);
+  font-weight:300;
+  font-size:var(--kros-telo);
+  line-height:var(--kros-riadok-telo);
+  color:var(--kros-text);
+  background:var(--kros-pozadie);
+  /* Zámerne bez background-attachment:fixed – v Chromiu sa pri fullpage
+     screenshote a pri tlači do PDF gradient nevykreslí pod celú výšku
+     dokumentu a stránka vyzerá rozbito. */
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{
+  font-weight:600;
+  line-height:var(--kros-riadok-nadpis);
+  margin:0 0 var(--kros-r2);
+}
+h1{font-size:var(--kros-h1);}
+h2{font-size:var(--kros-h2);}
+h3{font-size:var(--kros-h3);}
+p{margin:0 0 var(--kros-r2);}
+a{color:inherit;}
+
+/* Headline v dvoch rezoch – jemnejšia časť Light, kľúčová SemiBold (str. 28) */
+.kros-jemne{font-weight:300;display:block;}
+.kros-klucove{font-weight:600;display:block;}
+
+.kros-obal{
+  max-width:var(--kros-sirka-obsahu);
+  margin:0 auto;
+  padding:0 var(--kros-r3);
+}
+
+/* Kicker a pill – verzálky s kerningom (str. 29) */
+.kros-kicker{
+  font-size:var(--kros-kicker);
+  font-weight:500;
+  letter-spacing:var(--kros-kerning);
+  text-transform:uppercase;
+  color:var(--kros-text-jemny);
+  margin:0 0 var(--kros-r2);
+}
+.kros-pill{
+  display:inline-block;
+  padding:.45rem 1.1rem;
+  border-radius:var(--kros-oblost-button);
+  background:var(--kros-doplnkova-bezova);
+  color:var(--kros-modra);
+  font-size:var(--kros-kicker);
+  font-weight:500;
+  letter-spacing:var(--kros-kerning);
+  text-transform:uppercase;
+}
+
+/* Button: plne zaoblený, Poppins Medium, mínusky, kerning 0 (str. 29) */
+.kros-btn{
+  display:inline-block;
+  padding:.85rem 1.9rem;
+  border:0;
+  border-radius:var(--kros-oblost-button);
+  background:var(--kros-akcent);
+  color:var(--kros-text-na-akcente);
+  font-family:var(--kros-font);
+  font-size:var(--kros-telo);
+  font-weight:500;
+  letter-spacing:0;
+  text-decoration:none;
+  cursor:pointer;
+}
+.kros-btn--obrys{
+  background:transparent;
+  color:var(--kros-text);
+  box-shadow:inset 0 0 0 1px var(--kros-text);
+}
+
+/* Ukazovateľ: horizontálna línia na spadávku, zakončená krúžkom (str. 28) */
+.kros-ukazovatel{
+  display:flex;
+  align-items:center;
+  gap:0;
+  margin:var(--kros-r3) 0;
+  /* ťahá sa od ľavého okraja okna, nie od okraja obsahu – „na spadávku“ */
+  margin-left:calc(50% - 50vw);
+  /* končí krátko za headlinom, nie na druhom konci stránky – ukazovateľ
+     podčiarkuje text, nie celú šírku okna (manuál str. 28) */
+  max-width:calc(50vw - 50% + 36rem);
+}
+.kros-ukazovatel::before{
+  content:"";
+  flex:1;
+  height:2px;
+  background:var(--kros-akcent);
+}
+.kros-ukazovatel::after{
+  content:"";
+  width:.9rem;
+  height:.9rem;
+  border:2px solid var(--kros-akcent);
+  border-radius:50%;
+}
+
+.kros-karta{
+  padding:var(--kros-r3);
+  border-radius:var(--kros-oblost-karta);
+  background:var(--kros-povrch);
+  box-shadow:inset 0 0 0 1px var(--kros-ciara);
+}
+.kros-karta h3{margin-bottom:var(--kros-r1);}
+.kros-karta p{margin:0;color:var(--kros-text-jemny);}
+
+.kros-mriezka{
+  display:grid;
+  gap:var(--kros-r3);
+  grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));
+}
+
+.kros-logo{display:block;height:2.4rem;width:auto;}
+.kros-nav{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--kros-r3);
+  /* padding-block, nie shorthand: prvok nesie aj triedu .kros-obal a tá dáva
+     vodorovné odsadenie. Shorthand by ho zmazal a pod 1200 px by sa logo
+     aj button lepili na okraj okna. */
+  padding-block:var(--kros-r3);
+}
+.kros-nav ul{
+  display:flex;
+  gap:var(--kros-r3);
+  list-style:none;
+  margin:0;
+  padding:0;
+  font-size:var(--kros-male);
+}
+.kros-nav a{text-decoration:none;}
+
+.kros-hero{
+  position:relative;
+  padding:var(--kros-r5) 0 var(--kros-r6);
+  /* dekor sa nesmie rozliať do ďalšej sekcie – v hero má ostať */
+  overflow:hidden;
+}
+.kros-hero__text{max-width:34rem;}
+/* Dekor je pozadie, nie obsah – preto aria-hidden a pointer-events:none */
+.kros-dekor{
+  position:absolute;
+  inset:auto 0 auto auto;
+  top:-1.5rem;
+  right:calc(50% - 50vw);
+  width:min(26rem,34vw);
+  aspect-ratio:1;
+  background:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%20preserveAspectRatio%3D%22none%22%3E%3Cg%20stroke%3D%22%23D1DBE8%22%20stroke-width%3D%220.90%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%20opacity%3D%220.5%22%3E%3Cline%20x1%3D%224.0%22%20y1%3D%228.0%22%20x2%3D%2252.0%22%20y2%3D%2296.0%22%2F%3E%3Cline%20x1%3D%2216.0%22%20y1%3D%2288.0%22%20x2%3D%2294.0%22%20y2%3D%2230.0%22%2F%3E%3Cline%20x1%3D%2242.0%22%20y1%3D%222.0%22%20x2%3D%2272.0%22%20y2%3D%2266.0%22%2F%3E%3Cline%20x1%3D%2262.0%22%20y1%3D%2214.0%22%20x2%3D%2228.0%22%20y2%3D%2258.0%22%2F%3E%3Cline%20x1%3D%2266.0%22%20y1%3D%2294.0%22%20x2%3D%22100.0%22%20y2%3D%2244.0%22%2F%3E%3Cline%20x1%3D%2280.0%22%20y1%3D%2218.0%22%20x2%3D%2288.0%22%20y2%3D%2282.0%22%2F%3E%3Cline%20x1%3D%220.0%22%20y1%3D%2244.0%22%20x2%3D%2230.0%22%20y2%3D%2226.0%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") center/contain no-repeat;
+  pointer-events:none;
+}
+
+.kros-pas{
+  margin:var(--kros-r5) 0;
+  padding:var(--kros-r4);
+  border-radius:var(--kros-oblost-karta);
+  background:var(--kros-povrch);
+  box-shadow:inset 0 0 0 1px var(--kros-ciara);
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--kros-r3);
+}
+.kros-pas h2{margin:0;}
+.kros-pas p{margin:.35rem 0 0;color:var(--kros-text-jemny);}
+
+.kros-paticka{
+  padding-block:var(--kros-r4);
+  border-top:1px solid var(--kros-ciara);
+  font-size:var(--kros-male);
+  color:var(--kros-text-jemny);
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--kros-r2);
+}
+.kros-paticka p{margin:0;}
+
+/* --- rozhranie aplikácie ------------------------------------------------ */
+.kros-telefon{
+  width:20.5rem;
+  border-radius:2.5rem;
+  padding:var(--kros-r1);
+  background:var(--kros-modra);
+  box-shadow:inset 0 0 0 1px var(--kros-ciara);
+}
+.kros-obrazovka{
+  border-radius:2rem;
+  background:var(--kros-biela);
+  color:var(--kros-modra);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  min-height:38rem;
+}
+.kros-obrazovka__hlavicka{
+  padding:var(--kros-r3) var(--kros-r2) var(--kros-r2);
+  background:var(--kros-modra);
+  color:var(--kros-biela);
+}
+.kros-obrazovka__hlavicka h3{margin:0;font-size:var(--kros-h3);}
+.kros-obrazovka__telo{flex:1;padding:var(--kros-r2);}
+.kros-riadok{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--kros-r2);
+  padding:.8rem 0;
+  border-bottom:1px solid var(--kros-obrys-jemny);
+  font-size:var(--kros-male);
+}
+.kros-riadok:last-child{border-bottom:0;}
+.kros-riadok__suma{font-weight:500;}
+.kros-stav{
+  font-size:.75rem;
+  font-weight:500;
+  letter-spacing:var(--kros-kerning);
+  text-transform:uppercase;
+  padding:.2rem .6rem;
+  border-radius:var(--kros-oblost-button);
+  background:var(--kros-stav-plocha);
+  color:var(--kros-modra);
+}
+.kros-stav--pozor{background:var(--kros-doplnkova-bezova);}
+.kros-vstup{
+  width:100%;
+  padding:.7rem 1.1rem;
+  border:1px solid var(--kros-obrys-jemny);
+  border-radius:var(--kros-oblost-vstup);
+  font-family:var(--kros-font);
+  font-size:var(--kros-male);
+  color:var(--kros-modra);
+  background:var(--kros-biela);
+}
+.kros-lista{
+  display:flex;
+  justify-content:space-around;
+  padding:var(--kros-r2) 0;
+  border-top:1px solid var(--kros-obrys-jemny);
+  font-size:.75rem;
+  color:var(--kros-doplnkova-modra);
+}
+.kros-lista span[aria-current]{color:var(--kros-modra);font-weight:500;}
+
+@media (max-width:960px){
+  :root{--kros-h1:2.5rem;--kros-h2:1.9rem;}
+  .kros-dekor{width:min(18rem,42vw);opacity:.6;}
+}
+@media (max-width:640px){
+  :root{--kros-h1:2.1rem;--kros-h2:1.6rem;}
+  /* Odkazy sa neskrývajú – bez hamburger menu by sa k nim nikto nedostal.
+     Namiesto toho sa hlavička zabalí do viacerých riadkov. */
+  /* Na telefóne dekor mizne – neóny sú ozdoba a v tejto šírke by ležali
+     priamo v headlinu. Manuál aj tak žiada vzdušnosť. */
+  .kros-dekor{display:none;}
+  .kros-nav{flex-wrap:wrap;row-gap:var(--kros-r2);}
+  .kros-nav nav{order:3;width:100%;}
+  .kros-nav ul{flex-wrap:wrap;gap:var(--kros-r2);}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important;transition:none !important;}
+}
