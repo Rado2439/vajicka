@@ -1,4 +1,4 @@
-# VAJÍČKA ! – spoločné objednávanie vajíčok
+# Vajíčka – spoločné objednávanie vajíčok
 
 Webová aplikácia vo firemnom vizuále KROS (korporátny režim: KROS modrá, belasá, Poppins). Písmo a logo sú súčasťou projektu, nič sa neťahá z internetu. Node.js 20+, **žiadne závislosti** (netreba `npm install`).
 
