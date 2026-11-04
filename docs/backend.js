@@ -11,15 +11,21 @@
       e.status = 503;
       throw e;
     }
+    // nový „publishable“ kľúč (sb_publishable_…) ide len v hlavičke apikey,
+    // starší anon kľúč (JWT) aj v Authorization
+    const headers = { 'Content-Type': 'application/json', apikey: cfg.anonKey };
+    if (!cfg.anonKey.startsWith('sb_')) headers.Authorization = `Bearer ${cfg.anonKey}`;
     const res = await fetch(`${cfg.url.replace(/\/$/, '')}/rest/v1/rpc/${fn}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}` },
+      headers,
       body: JSON.stringify(args),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       // databáza posiela HTTP stav (401, 403, 409…) v poli „hint“
-      const e = new Error(data.message || `Chyba ${res.status}`);
+      const e = new Error(data.code === 'PGRST202'
+        ? 'V Supabase ešte nie je nahraná databáza Vajíčok – spusti supabase/databaza.sql v SQL Editore.'
+        : data.message || `Chyba ${res.status}`);
       e.status = Number(data.hint) || res.status;
       throw e;
     }

@@ -30,7 +30,7 @@ a každá overí kód skupiny. Adresa Teams webhooku je len v databáze.
 
 ## Nastavenie (raz)
 
-1. **Supabase** – na [supabase.com](https://supabase.com) vytvor nový projekt (napr. `vajicka`, región Frankfurt).
+1. **Supabase** – appka používa projekt *Prezencna listina* (spolu s Prezenčkou a Dovolenkami). Nič nezdieľa: tabuľky sú v schéme `vajicka`, funkcie majú predponu `vj_`.
 2. **Databáza** – Supabase → *SQL Editor* → vlož celý `supabase/databaza.sql` → *Run*.
    Zapne aj rozšírenia `pg_cron` a `pg_net` a naplánuje úlohu `vajicka-tick` (každú minútu).
 3. **Ľudia** – v appke záložka *Ľudia* → „Hromadne pridať“ (riadky `Meno; email`), alebo SQL skript so zoznamom.
@@ -40,7 +40,7 @@ a každá overí kód skupiny. Adresa Teams webhooku je len v databáze.
    - `app_url` – adresa appky, napr. `https://rado2439.github.io/vajicka/`,
    - `admin_pin` – nepovinný PIN pre záložku Ľudia,
    - cena, balenie, uzávierka, pripomienka (`pack_size`, `pack_price_cents`, `deadline_time`, `reminder_time`, …).
-5. **Stránka** – do `docs/config.js` doplň *Project URL* a *anon public* kľúč (Supabase → *Project Settings* → *API*).
+5. **Stránka** – `docs/config.js` obsahuje adresu projektu a *publishable* kľúč (Supabase → *Project Settings* → *API Keys*); ten je verejný.
 6. **GitHub Pages** – repozitár → *Settings* → *Pages* → *Deploy from a branch* → `main` / `/docs` → *Save*.
    (GitHub Pages zadarmo funguje len pre verejný repozitár.)
 
