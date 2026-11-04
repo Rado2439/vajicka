@@ -44,7 +44,7 @@
       people: people.filter((p) => p.active).map(({ id, name, remind }) => ({ id, name, remind })), supplierId, openOrderId: openId, nextOpensAt: null, lastClosedId: lastClosed, teamsConfigured: true } };
     if (path === '/api/orders') return { body: Object.values(orders).map(summarize).sort((a, b) => b.id.localeCompare(a.id)) };
     if ((m = path.match(/^\/api\/orders\/([\d-]+)$/))) return { body: summarize(orders[m[1]]) };
-    if ((m = path.match(/^\/api\/orders\/([\d-]+)\/entries\/(\w+)$/))) {
+    if ((m = path.match(/^\/api\/orders\/([\d-]+)\/entries\/([^/]+)$/))) {
       const o = orders[m[1]]; const e = o.entries[m[2]] || { qty: 0, paid: false };
       e.qty = Math.max(0, Math.round(body.qty / 10) * 10); o.entries[m[2]] = e; return { body: summarize(o) };
     }
@@ -72,10 +72,12 @@
     }
     return err(404, 'Neznáma požiadavka');
   }
-  window.fetch = async (url, opts = {}) => {
-    const r = handle(opts.method || 'GET', url, opts.body ? JSON.parse(opts.body) : {});
+  // demo nahrádza napojenie na Supabase (backend.js)
+  window.vajickaBackend = async (method, path, body) => {
+    const r = handle(method, path, body || {});
     await new Promise((res) => setTimeout(res, 120));
-    return { ok: !r.status || r.status < 400, status: r.status || 200, json: async () => JSON.parse(JSON.stringify(r.body)) };
+    if (r.status >= 400) { const e = new Error(r.body.error); e.status = r.status; throw e; }
+    return JSON.parse(JSON.stringify(r.body));
   };
   // demo nepoužíva uložené meno z iných spustení
   try { localStorage.removeItem('vajicka.me'); } catch {}

@@ -1,7 +1,7 @@
 # Zostaví samostatné demo (jeden HTML súbor so simulovaným serverom)
 import base64, re, pathlib
 root = pathlib.Path(__file__).resolve().parent.parent
-pub = root / 'public'
+pub = root / 'docs'
 css = (pub / 'kros.css').read_text()
 for f in ['Light', 'Medium', 'SemiBold']:
     b64 = base64.b64encode((pub / 'fonty' / f'Poppins-{f}.ttf').read_bytes()).decode()
@@ -16,6 +16,7 @@ html = html.replace('<link rel="stylesheet" href="app.css">', '<style>' + (pub /
 html = html.replace('<header class="top">', '<div class="demo">Demo – objednávky sú vymyslené, nič sa neukladá</div>\n<header class="top">')
 people = root / 'people.json'
 seed = f"<script>window.DEMO_PEOPLE={people.read_text()};</script>\n" if people.exists() else ''
+html = html.replace('<script src="config.js"></script>\n<script src="backend.js"></script>\n', '')
 html = html.replace('<script src="app.js"></script>', seed +
     '<script>' + (root / 'demo' / 'mock.js').read_text() + '</script>\n<script>' + (pub / 'app.js').read_text() + '</script>')
 (root / 'demo' / 'vajicka-demo.html').write_text(html)

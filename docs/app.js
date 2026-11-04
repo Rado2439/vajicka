@@ -4,6 +4,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const main = $('#main');
 const LS_ME = 'vajicka.me';
 const LS_PIN = 'vajicka.pin';
+const LS_CODE = 'vajicka.kod';
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -22,17 +23,24 @@ const state = {
   summaryId: null,
   histId: null,
   adminPin: store.get(LS_PIN) || '',
+  code: store.get(LS_CODE) || '',
 };
+
+// Kód skupiny môže prísť v odkaze z Teams (…#kod=ABC123); uložíme ho a z adresy ho skryjeme
+{
+  const m = location.hash.match(/kod=([^&]+)/);
+  if (m) {
+    state.code = decodeURIComponent(m[1]);
+    store.set(LS_CODE, state.code);
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+}
 
 // ---------- pomocné ----------
 
-async function api(method, url, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (state.adminPin) headers['X-Admin-Pin'] = state.adminPin;
-  const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { const e = new Error(data.error || `Chyba ${res.status}`); e.status = res.status; throw e; }
-  return data;
+// Všetky požiadavky idú cez backend.js (Supabase)
+function api(method, url, body) {
+  return window.vajickaBackend(method, url, body, { code: state.code, pin: state.adminPin });
 }
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const eur = (c) => (c / 100).toFixed(2).replace('.', ',') + ' ' + (state.boot?.config.currency || '€');
@@ -87,6 +95,7 @@ async function go(view, opts = {}) {
   try {
     await VIEWS[view](opts);
   } catch (e) {
+    if (e.status === 401) return showCode();
     main.innerHTML = `<div class="card"><h2>Niečo sa pokazilo</h2><p class="alert">${esc(e.message)}</p>
       <button class="kros-btn" id="retry">Skúsiť znova</button></div>`;
     $('#retry').onclick = () => go(view);
@@ -441,13 +450,40 @@ async function saveQty() {
 
 // ---------- štart ----------
 
+// Obrazovka na zadanie kódu skupiny (pri prvej návšteve alebo po zmene kódu)
+function showCode() {
+  state.boot = null;
+  updateChrome();
+  main.innerHTML = `${hero('Spoločná objednávka', 'vajíčok', 'Zadaj kód skupiny. Nájdeš ho v Teams chate „vajká na stredu“.')}
+    <form class="card" id="codef" style="max-width:420px">
+      <label class="kicker" for="code">Kód skupiny</label>
+      <div class="btn-row"><input class="kros-vstup" id="code" autocomplete="off" autocapitalize="characters" style="flex:1" value="${esc(state.code)}">
+      <button class="kros-btn">Pokračovať</button></div>
+      ${state.code ? '<p class="alert" style="margin:12px 0 0">Tento kód nesedí, skús to znova.</p>' : ''}
+    </form>`;
+  $('#code').focus();
+  $('#codef').onsubmit = async (ev) => {
+    ev.preventDefault();
+    state.code = $('#code').value.trim();
+    store.set(LS_CODE, state.code);
+    start();
+  };
+}
+
+let refreshTimer = null;
 async function start() {
   try { await refreshBoot(); }
-  catch (e) { main.innerHTML = `<div class="card"><h2>Server nie je dostupný</h2><p class="alert">${esc(e.message)}</p></div>`; return; }
+  catch (e) {
+    if (e.status === 401) return showCode();
+    main.innerHTML = `<div class="card"><h2>Databáza nie je dostupná</h2><p class="alert">${esc(e.message)}</p></div>`;
+    return;
+  }
   if (state.me && !me()) { state.me = null; store.set(LS_ME, null); }
   go(me() ? 'order' : 'who');
 
-  setInterval(async () => {
+  if (refreshTimer) return;
+  refreshTimer = setInterval(async () => {
+    if (!state.boot) return;
     const cd = $('#cd');
     if (cd && state.order) cd.textContent = countdown(state.order.deadline);
     const prevOpen = state.boot.openOrderId;
