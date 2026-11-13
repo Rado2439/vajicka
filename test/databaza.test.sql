@@ -55,6 +55,25 @@ select pg_temp.fails(format($$select vj_set_paid('TEST', '2026-11-04', %L, %L, t
 select pg_temp.eq((vj_set_paid('TEST', '2026-11-04', (select maria from ids), (select jan from ids), true)->>'unpaidCents')::int, 900, 'zabezpečovateľ označil Máriu');
 select pg_temp.eq((select paid_by from vajicka.entries where person_id = (select maria from ids)), (select jan from ids), 'zapísané, kto označil');
 
+-- navýšenie po zaplatení: dopočíta rozdiel
+create temp table s1 as select vj_set_qty('TEST', '2026-11-04', (select maria from ids), 30) as j;
+select pg_temp.eq((select (r->>'paid')::bool from s1, jsonb_array_elements(j->'rows') r where r->>'name' like 'Mária%'), false, 'po navýšení už nie je zaplatené');
+select pg_temp.eq((select (r->>'dueCents')::int from s1, jsonb_array_elements(j->'rows') r where r->>'name' like 'Mária%'), 300, 'doplatiť 3 € za navýšenie');
+select pg_temp.eq((select (j->>'unpaidCents')::int from s1), 1200, 'nezaplatené spolu: 9 € Ján + 3 € doplatok');
+select pg_temp.eq(vajicka.summary_payload('2026-11-04')::text like '%doplatiť 3,00 €%', true, 'doplatok aj v Teams súhrne');
+-- zníženie pod zaplatené nejde
+select pg_temp.fails(format($$select vj_set_qty('TEST', '2026-11-04', %L, 10)$$, (select maria from ids)), '409', 'nemožno znížiť pod zaplatené');
+select pg_temp.fails(format($$select vj_set_qty('TEST', '2026-11-04', %L, 0)$$, (select maria from ids)), '409', 'nemožno zrušiť zaplatenú objednávku');
+select pg_temp.eq((vj_set_qty('TEST', '2026-11-04', (select maria from ids), 20)->>'unpaidCents')::int, 900, 'späť na zaplatené množstvo ide');
+-- zrušiť zaplatenie môže len zabezpečovateľ
+select pg_temp.fails(format($$select vj_set_paid('TEST', '2026-11-04', %L, %L, false)$$, (select maria from ids), (select maria from ids)), '403', 'zrušiť platbu nemôže sama');
+select vj_set_qty('TEST', '2026-11-04', (select maria from ids), 30);
+select pg_temp.eq((vj_set_paid('TEST', '2026-11-04', (select maria from ids), (select maria from ids), true)->>'unpaidCents')::int, 900, 'doplatila – zaplatené celých 9 €');
+select pg_temp.eq((select paid_cents from vajicka.entries where person_id = (select maria from ids)), 900, 'zapamätaná zaplatená suma');
+select vj_set_paid('TEST', '2026-11-04', (select maria from ids), (select jan from ids), false);
+select pg_temp.eq((vj_set_qty('TEST', '2026-11-04', (select maria from ids), 20)->>'totalQty')::int, 50, 'po zrušení platby zabezpečovateľom sa dá znížiť');
+select vj_set_paid('TEST', '2026-11-04', (select maria from ids), (select jan from ids), true);
+
 -- pripomienka
 select pg_temp.eq(vajicka.reminder_due('2026-11-04'), false, 'pred 8:00 sa nepripomína');
 select set_config('vajicka.now', '2026-11-02 07:00:30+00', false);

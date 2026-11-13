@@ -65,6 +65,12 @@ const me = () => state.boot?.people.find((p) => p.id === state.me);
 const isSupplier = () => state.me && state.me === state.boot?.supplierId;
 const supplierName = () => state.boot?.people.find((p) => p.id === state.boot.supplierId)?.name || '—';
 const cents = (qty) => Math.round((qty * state.boot.config.packPriceCents) / state.boot.config.packSize);
+// Stav platby riadku: zaplatené / doplatiť X / nezaplatené
+const payStatus = (r) => r.paid ? { text: 'zaplatené', cls: '' }
+  : r.paidCents > 0 ? { text: `doplatiť ${eur(r.dueCents)}`, cls: 'stav--pozor' }
+  : { text: 'nezaplatené', cls: 'stav--pozor' };
+// Koľko kusov je už zaplatených (pod to sa objednávka nedá znížiť)
+const paidQty = (r) => (r && r.paidCents > 0 ? Math.round((r.paidCents * state.boot.config.packSize) / state.boot.config.packPriceCents) : 0);
 const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
 function payToggle({ checked, disabled, label, data = '' }) {
@@ -141,9 +147,11 @@ const VIEWS = {
         <div class="total" style="border:0;margin:0;padding:0">
           <span>${myLast.qty} ks</span><strong>${eur(myLast.cents)}</strong>
         </div>
-        <p class="small muted" style="margin:6px 0 14px">${myLast.paid ? 'Zaplatené, ďakujeme.' : `Zaplať: ${esc(supplierName())}`}</p>
-        ${payToggle({ checked: myLast.paid, label: 'Zaplatil som', data: 'id="paidLast"' })}
-        ${myLast.paid ? '' : ' <span class="stav stav--pozor" style="margin-left:8px">nezaplatené</span>'}
+        <p class="small muted" style="margin:6px 0 14px">${myLast.paid ? 'Zaplatené, ďakujeme.'
+          : myLast.paidCents > 0 ? `Zaplatené ${eur(myLast.paidCents)}, doplatiť ${eur(myLast.dueCents)} – ${esc(supplierName())}`
+          : `Zaplať: ${esc(supplierName())}`}</p>
+        ${payToggle({ checked: myLast.paid, disabled: myLast.paid && !isSupplier(), label: myLast.paidCents > 0 && !myLast.paid ? 'Doplatil som' : 'Zaplatil som', data: 'id="paidLast"' })}
+        ${myLast.paid ? '' : ` <span class="stav stav--pozor" style="margin-left:8px">${payStatus(myLast).text}</span>`}
       </div>` : '';
 
     if (!b.openOrderId) {
@@ -185,12 +193,7 @@ const VIEWS = {
           <div class="save" id="saveState">${saveStateHtml()}</div>
         </div>
         <div>
-          <div class="card card--plocha">
-            <p class="kicker">Platba</p>
-            <p style="margin:0 0 14px">Vajíčka zabezpečuje <b>${esc(supplierName())}</b>, platí sa jemu – hotovosťou alebo prevodom.</p>
-            ${mine ? payToggle({ checked: mine.paid, label: 'Za tento týždeň už mám zaplatené', data: 'id="paidNow"' })
-              : '<p class="small muted" style="margin:0">Platbu označíš, keď si niečo objednáš.</p>'}
-          </div>
+          <div class="card card--plocha" id="payCard">${payCardHtml(mine)}</div>
           <div class="card">
             <p class="kicker">Pripomienka</p>
             <p class="small muted" style="margin:0 0 14px">Ak si v pondelok ráno ešte nemáš objednané, označíme ťa v Teams chate „vajká na stredu“.</p>
@@ -203,8 +206,8 @@ const VIEWS = {
     $('#m10').onclick = () => setQty(state.draft - step);
     $('#p10').onclick = () => setQty(state.draft + step);
     main.querySelectorAll('.chip').forEach((c) => c.onclick = () => setQty(+c.dataset.q));
-    if ($('#paidNow')) $('#paidNow').onchange = (e) => markPaid(o.id, state.me, e.target.checked)
-      .then(() => { state.order = null; }).catch((er) => alert(er.message)).then(() => go('order', { keepScroll: true }));
+    bindPayCard();
+    updateLimits();
     $('#remindMe').onchange = (e) => api('PUT', `/api/people/${state.me}/remind`, { remind: e.target.checked, actorId: state.me })
       .then(refreshBoot).catch((er) => { alert(er.message); e.target.checked = !e.target.checked; });
     bindPaidLast(lastClosed);
@@ -338,6 +341,32 @@ function reminderCard(r) {
   </div>`;
 }
 
+// ---------- platba v objednávke ----------
+
+function payCardHtml(mine) {
+  const head = `<p class="kicker">Platba</p>
+    <p style="margin:0 0 14px">Vajíčka zabezpečuje <b>${esc(supplierName())}</b>. Platí sa hotovosťou alebo prevodom.</p>`;
+  if (!mine) return head + '<p class="small muted" style="margin:0">Platbu označíš, keď si niečo objednáš.</p>';
+  const partial = !mine.paid && mine.paidCents > 0;
+  return head + `
+    ${partial ? `<p class="alert" style="margin:0 0 14px">Zaplatené ${eur(mine.paidCents)}, po navýšení doplatiť <b>${eur(mine.dueCents)}</b>.</p>` : ''}
+    ${payToggle({ checked: mine.paid, disabled: mine.paid && !isSupplier(), label: partial ? 'Doplatil som' : 'Za tento týždeň už mám zaplatené', data: 'id="paidNow"' })}
+    ${mine.paidCents > 0 ? `<p class="small muted" style="margin:10px 0 0">Zaplatené vajíčka (${paidQty(mine)} ks) už nemôžeš odobrať, len pridať.</p>` : ''}`;
+}
+function bindPayCard() {
+  const cb = $('#paidNow');
+  if (cb) cb.onchange = (e) => markPaid(state.order.id, state.me, e.target.checked)
+    .then(() => { state.order = null; }).catch((er) => alert(er.message)).then(() => go('order', { keepScroll: true }));
+}
+// Zaplatené kusy sa nedajú odobrať: zablokuje −10 a nižšie voľby
+function updateLimits() {
+  const min = paidQty(state.order?.rows.find((r) => r.personId === state.me));
+  const m10 = $('#m10');
+  if (!m10) return;
+  m10.disabled = state.draft - state.boot.config.packSize < min;
+  main.querySelectorAll('.chip').forEach((c) => { c.disabled = +c.dataset.q < min; });
+}
+
 // ---------- súhrn ----------
 
 function summaryHtml(o, interactive) {
@@ -352,10 +381,10 @@ function summaryHtml(o, interactive) {
     return `<tr class="${r.paid ? 'paid' : 'unpaid'} ${mine ? 'me' : ''}">
       <td class="name"><b>${esc(r.name)}</b>${r.personId === state.boot.supplierId ? '<small>zabezpečovateľ</small>' : ''}${mine ? '<small>to si ty</small>' : ''}</td>
       <td class="num">${r.qty}</td>
-      <td class="num">${eur(r.cents)}</td>
+      <td class="num">${eur(r.cents)}${!r.paid && r.paidCents > 0 ? `<small class="muted" style="display:block">doplatiť ${eur(r.dueCents)}</small>` : ''}</td>
       <td><div class="paycell">
-        <span class="stav ${r.paid ? '' : 'stav--pozor'} hide-m" title="${esc(by)}">${r.paid ? 'zaplatené' : 'nezaplatené'}</span>
-        ${payToggle({ checked: r.paid, disabled: !(canPay && (mine || sup)), label: mine ? 'Zaplatil som' : `Zaplatil ${r.name}`, data: `data-pid="${r.personId}"` }).replace('<span class="pay__label">', '<span class="pay__label sr">')}
+        <span class="stav ${payStatus(r).cls} hide-m" title="${esc(by)}">${payStatus(r).text}</span>
+        ${payToggle({ checked: r.paid, disabled: !(canPay && (mine || sup)) || (r.paid && !sup), label: mine ? 'Zaplatil som' : `Zaplatil ${r.name}`, data: `data-pid="${r.personId}"` }).replace('<span class="pay__label">', '<span class="pay__label sr">')}
       </div></td>
     </tr>`;
   }).join('');
@@ -426,12 +455,19 @@ function saveStateHtml() {
 function setQty(n) {
   const step = state.boot.config.packSize;
   n = Math.max(0, Math.min(1000, Math.round(n / step) * step));
+  const min = paidQty(state.order?.rows.find((r) => r.personId === state.me));
+  if (n < min) {
+    state.saveState = 'error'; state.saveError = `Zaplatené vajíčka (${min} ks) sa nedajú odobrať.`;
+    $('#saveState').innerHTML = saveStateHtml();
+    return;
+  }
   if (n === state.draft) return;
   state.draft = n;
   $('#sum').textContent = eur(cents(n));
   $('#eggs').innerHTML = eggsHtml(n);
   $('#qtyInput').textContent = n;
   main.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(+c.dataset.q === n && n > 0)));
+  updateLimits();
   state.saveState = 'saving'; $('#saveState').innerHTML = saveStateHtml();
   clearTimeout(state.saveTimer);
   state.saveTimer = setTimeout(saveQty, 600);
@@ -440,6 +476,9 @@ async function saveQty() {
   try {
     state.order = await api('PUT', `/api/orders/${state.order.id}/entries/${state.me}`, { qty: state.draft });
     state.saveState = 'saved';
+    // po navýšení zaplatenej objednávky ukáž doplatok
+    const card = $('#payCard');
+    if (card) { card.innerHTML = payCardHtml(state.order.rows.find((r) => r.personId === state.me)); bindPayCard(); }
   } catch (e) {
     state.saveState = 'error'; state.saveError = e.message;
     if (e.status === 409) { await refreshBoot(); state.saveTimer = null; return go('order'); }

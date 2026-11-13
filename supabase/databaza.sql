@@ -86,6 +86,11 @@ create table if not exists vajicka.entries (
   primary key (delivery_date, person_id)
 );
 
+-- koľko kto zaplatil (pri navýšení po zaplatení sa dopočíta rozdiel)
+alter table vajicka.entries add column if not exists paid_cents int not null default 0;
+update vajicka.entries e set paid_cents = round(e.qty * o.pack_price_cents::numeric / o.pack_size)
+from vajicka.orders o where o.delivery_date = e.delivery_date and e.paid and e.paid_cents = 0;
+
 alter table vajicka.settings enable row level security;
 alter table vajicka.people   enable row level security;
 alter table vajicka.orders   enable row level security;
@@ -215,19 +220,21 @@ begin
 
   select coalesce(jsonb_agg(jsonb_build_object(
            'personId', x.person_id, 'name', x.name, 'qty', x.qty, 'cents', x.cents,
-           'paid', x.paid, 'paidAt', x.paid_at, 'paidByName', coalesce(x.paid_by_name, ''))
+           'paid', x.due = 0, 'paidCents', x.paid_cents, 'dueCents', x.due,
+           'paidAt', x.paid_at, 'paidByName', coalesce(x.paid_by_name, ''))
            order by x.name collate "und-x-icu"), '[]'::jsonb),
          coalesce(sum(x.qty), 0), coalesce(sum(x.cents), 0),
-         count(*) filter (where not x.paid), coalesce(sum(x.cents) filter (where not x.paid), 0), count(*)
+         count(*) filter (where x.due > 0), coalesce(sum(x.due), 0), count(*)
     into rows, tq, tc, uc, ucents, n
   from (
-    select e.person_id, p.name, e.qty, e.paid, e.paid_at, pb.name as paid_by_name,
+    select y.*, greatest(y.cents - y.paid_cents, 0) as due from (
+    select e.person_id, p.name, e.qty, e.paid_cents, e.paid_at, pb.name as paid_by_name,
            round(e.qty * o.pack_price_cents::numeric / o.pack_size)::bigint as cents
     from vajicka.entries e
     join vajicka.people p on p.id = e.person_id
     left join vajicka.people pb on pb.id = e.paid_by
     where e.delivery_date = k and e.qty > 0
-  ) x;
+  ) y) x;
 
   return jsonb_build_object(
     'id', k, 'deliveryDate', k, 'deadline', o.deadline,
@@ -295,7 +302,10 @@ begin
 
   if jsonb_array_length(sm->'rows') > 0 then
     select jsonb_agg(jsonb_build_object('title', r->>'name',
-             'value', (r->>'qty') || ' ks – ' || vajicka.eur((r->>'cents')::bigint) || case when (r->>'paid')::bool then ' ✅' else '' end))
+             'value', (r->>'qty') || ' ks – ' || vajicka.eur((r->>'cents')::bigint)
+                      || case when (r->>'paid')::bool then ' ✅'
+                              when (r->>'paidCents')::int > 0 then ' (doplatiť ' || vajicka.eur((r->>'dueCents')::bigint) || ')'
+                              else '' end))
       into facts from jsonb_array_elements(sm->'rows') r;
     body := body || jsonb_build_array(jsonb_build_object('type', 'FactSet', 'facts', facts));
   else
@@ -494,7 +504,9 @@ end $$;
 
 create or replace function public.vj_set_qty(p_code text, p_id date, p_person uuid, p_qty int) returns jsonb
 language plpgsql security definer set search_path = vajicka, pg_temp as $$
-declare o vajicka.orders;
+declare
+  o vajicka.orders;
+  v_paid int;
 begin
   perform vajicka.auth(p_code);
   select * into o from vajicka.orders where delivery_date = p_id;
@@ -503,13 +515,20 @@ begin
   if not exists (select 1 from vajicka.people where id = p_person and active) then perform vajicka.fail(404, 'Neznáma osoba'); end if;
   if p_qty is null or p_qty < 0 or p_qty > 1000 then perform vajicka.fail(400, 'Neplatný počet kusov'); end if;
   if p_qty % o.pack_size <> 0 then perform vajicka.fail(400, 'Objednať sa dá len po ' || o.pack_size || ' ks'); end if;
+  -- zaplatené vajíčka sa už nedajú odobrať (navýšiť áno – rozdiel sa doplatí)
+  select paid_cents into v_paid from vajicka.entries where delivery_date = p_id and person_id = p_person;
+  if coalesce(v_paid, 0) > round(p_qty * o.pack_price_cents::numeric / o.pack_size) then
+    perform vajicka.fail(409, 'Už je zaplatené ' || vajicka.eur(v_paid)
+      || ' – objednávku nemožno znížiť pod ' || (v_paid * o.pack_size / o.pack_price_cents) || ' ks');
+  end if;
 
   if p_qty = 0 then
-    delete from vajicka.entries where delivery_date = p_id and person_id = p_person and not paid;
-    update vajicka.entries set qty = 0, updated_at = now() where delivery_date = p_id and person_id = p_person;
+    delete from vajicka.entries where delivery_date = p_id and person_id = p_person;
   else
     insert into vajicka.entries (delivery_date, person_id, qty) values (p_id, p_person, p_qty)
     on conflict (delivery_date, person_id) do update set qty = excluded.qty, updated_at = now();
+    update vajicka.entries set paid = paid_cents >= round(qty * o.pack_price_cents::numeric / o.pack_size)
+    where delivery_date = p_id and person_id = p_person;
   end if;
   return vajicka.summary(p_id);
 end $$;
@@ -523,9 +542,15 @@ begin
   if p_actor is distinct from p_person and p_actor is distinct from (vajicka.cfg()).supplier_id then
     perform vajicka.fail(403, 'Platbu za iných môže označiť len zabezpečovateľ');
   end if;
-  update vajicka.entries set paid = coalesce(p_paid, false),
+  if not coalesce(p_paid, false) and p_actor is distinct from (vajicka.cfg()).supplier_id
+     and exists (select 1 from vajicka.entries where delivery_date = p_id and person_id = p_person and paid_cents > 0) then
+    perform vajicka.fail(403, 'Zrušiť zaplatenie môže len zabezpečovateľ');
+  end if;
+  update vajicka.entries e set paid = coalesce(p_paid, false),
+         paid_cents = case when p_paid then round(e.qty * o.pack_price_cents::numeric / o.pack_size) else 0 end,
          paid_at = case when p_paid then now() end, paid_by = case when p_paid then p_actor end
-  where delivery_date = p_id and person_id = p_person;
+  from vajicka.orders o
+  where o.delivery_date = e.delivery_date and e.delivery_date = p_id and e.person_id = p_person;
   if not found then perform vajicka.fail(404, 'Táto osoba nemá objednávku'); end if;
   return vajicka.summary(p_id);
 end $$;
@@ -658,7 +683,7 @@ begin
   update vajicka.people set active = false where id = p_person;   -- ostáva kvôli histórii
   if not found then perform vajicka.fail(404, 'Neznáma osoba'); end if;
   k := vajicka.open_delivery();
-  delete from vajicka.entries where delivery_date = k and person_id = p_person and not paid;
+  delete from vajicka.entries where delivery_date = k and person_id = p_person and paid_cents = 0;
   return jsonb_build_object('ok', true);
 end $$;
 
