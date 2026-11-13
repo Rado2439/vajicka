@@ -129,4 +129,59 @@ select pg_temp.eq(jsonb_array_length(vj_admin_people('TEST', '1234')->'people'),
 select pg_temp.fails(format($$select vj_admin_remove('TEST', '1234', %L)$$, (select jan from ids)), '409', 'zabezpečovateľa nemožno odobrať');
 select pg_temp.eq(jsonb_array_length(vj_orders('TEST')), 2, 'zoznam objednávok');
 
+
+-- ---------- úprava podľa dodávky: objednaných 310, dodaných 170 ----------
+select vj_admin_bulk('TEST', '1234', E'Osoba A\nOsoba B\nOsoba C\nOsoba D\nOsoba E\nOsoba F\nOsoba G\nOsoba H\nOsoba I');
+select set_config('vajicka.now', '2026-11-16 08:00+00', false);
+select vj_bootstrap('TEST');
+do $$
+declare q int[] := array[60, 50, 40, 40, 30, 30, 30, 20, 10]; i int;
+begin
+  for i in 1..9 loop
+    perform vj_set_qty('TEST', '2026-11-18', (select id from vajicka.people where name = 'Osoba ' || chr(64 + i)), q[i]);
+    update vajicka.entries set created_at = '2026-11-16 08:00+00'::timestamptz + i * interval '1 minute'
+    where person_id = (select id from vajicka.people where name = 'Osoba ' || chr(64 + i));
+  end loop;
+end $$;
+-- A zaplatil celých 60 ks (18 €) ešte pred dodávkou
+select vj_set_paid('TEST', '2026-11-18', (select id from vajicka.people where name = 'Osoba A'), (select id from vajicka.people where name = 'Osoba A'), true);
+select pg_temp.fails($$select vj_delivery_preview('TEST', '1234', '2026-11-18', 170)$$, '409', 'dodávka sa upravuje až po uzávierke');
+
+select set_config('vajicka.now', '2026-11-18 12:00+00', false);
+select pg_temp.fails($$select vj_delivery_preview('TEST', '0000', '2026-11-18', 170)$$, '403', 'dodávku bez PIN-u nikto neupraví');
+select pg_temp.fails($$select vj_delivery_preview('TEST', '1234', '2026-11-18', 175)$$, '400', 'dodané len po 10 ks');
+select pg_temp.fails($$select vj_delivery_preview('TEST', '1234', '2026-11-18', 320)$$, '400', 'dodané nie viac ako objednané');
+create temp table prev as select vj_delivery_preview('TEST', '1234', '2026-11-18', 170) as j;
+select pg_temp.eq((select string_agg(r->>'name' || '=' || (r->>'qty'), ' ' order by r->>'name') from prev, jsonb_array_elements(j->'rows') r),
+  'Osoba A=20 Osoba B=20 Osoba C=20 Osoba D=20 Osoba E=20 Osoba F=20 Osoba G=20 Osoba H=20 Osoba I=10', 'dookola po baleniach: 310 → 170');
+select pg_temp.eq((select string_agg(r->>'name' || '=' || (r->>'qty'), ' ' order by r->>'name')
+  from jsonb_array_elements(vj_delivery_preview('TEST', '1234', '2026-11-18', 100)->'rows') r),
+  'Osoba A=20 Osoba B=10 Osoba C=10 Osoba D=10 Osoba E=10 Osoba F=10 Osoba G=10 Osoba H=10 Osoba I=10', 'v poslednom kole má prednosť, kto objednal skôr');
+
+-- ručná úprava: súčet musí sedieť
+select pg_temp.fails($$select vj_delivery_confirm('TEST', '1234', '2026-11-18', 170,
+  (select jsonb_agg(jsonb_build_object('personId', r->>'personId', 'qty', 10)) from prev, jsonb_array_elements(j->'rows') r))$$,
+  '400', 'nesedí súčet rozdelenia');
+select pg_temp.fails($$select vj_delivery_confirm('TEST', '1234', '2026-11-18', 170,
+  (select jsonb_agg(jsonb_build_object('personId', r->>'personId', 'qty', case when r->>'name' = 'Osoba I' then 30 when r->>'name' = 'Osoba H' then 0 else (r->>'qty')::int end)) from prev, jsonb_array_elements(j->'rows') r))$$,
+  '400', 'nikto nedostane viac, ako objednal');
+
+-- potvrdenie
+create temp table conf as select vj_delivery_confirm('TEST', '1234', '2026-11-18', 170,
+  (select jsonb_agg(jsonb_build_object('personId', r->>'personId', 'qty', (r->>'qty')::int)) from prev, jsonb_array_elements(j->'rows') r)) as j;
+select pg_temp.eq((select (j->>'totalQty')::int from conf), 170, 'po úprave spolu 170 ks');
+select pg_temp.eq((select (j->>'orderedQty')::int from conf), 310, 'pôvodne objednaných 310 ks');
+select pg_temp.eq((select (j->>'totalCents')::int from conf), 5100, 'suma 51 € podľa dodávky');
+select pg_temp.eq((select (r->>'orderedQty')::int || '→' || (r->>'qty') from conf, jsonb_array_elements(j->'rows') r where r->>'name' = 'Osoba A'), '60→20', 'osoba A: 60 → 20');
+select pg_temp.eq((select (r->>'refundCents')::int from conf, jsonb_array_elements(j->'rows') r where r->>'name' = 'Osoba A'), 1200, 'osoba A zaplatila 18 €, vrátiť 12 €');
+select pg_temp.eq((select (j->'delivery'->>'deliveredQty')::int from conf), 170, 'uložené dodané množstvo');
+select pg_temp.eq((select body::text from net.calls order by id desc limit 1) like '%Farmár dodal **170 ks** z objednaných 310%', true, 'správa do Teams o dodávke');
+select pg_temp.eq((select body::text from net.calls order by id desc limit 1) like '%Osoba I%', false, 'v správe len tí, ktorým sa objednávka zmenila');
+select pg_temp.eq((select body::text from net.calls order by id desc limit 1) like '%vrátime 12,00 €%', true, 'v správe aj vrátenie peňazí');
+-- vrátené: zabezpečovateľ označí zaplatené → vrátiť 0
+select pg_temp.eq((select (r->>'refundCents')::int from jsonb_array_elements(
+  vj_set_paid('TEST', '2026-11-18', (select id from vajicka.people where name = 'Osoba A'), (select jan from ids), true)->'rows') r where r->>'name' = 'Osoba A'), 0, 'po vrátení peňazí sedí');
+-- opätovná úprava vychádza z pôvodnej objednávky
+select pg_temp.eq((select r->>'qty' from jsonb_array_elements(vj_delivery_preview('TEST', '1234', '2026-11-18', 310)->'rows') r where r->>'name' = 'Osoba A'), '60', 'opätovná úprava počíta s pôvodnými 60 ks');
+
 \echo VŠETKY TESTY PREŠLI

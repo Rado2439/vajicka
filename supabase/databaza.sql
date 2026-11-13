@@ -91,6 +91,16 @@ alter table vajicka.entries add column if not exists paid_cents int not null def
 update vajicka.entries e set paid_cents = round(e.qty * o.pack_price_cents::numeric / o.pack_size)
 from vajicka.orders o where o.delivery_date = e.delivery_date and e.paid and e.paid_cents = 0;
 
+-- úprava podľa skutočnej dodávky: pôvodná objednávka a poradie objednania
+alter table vajicka.entries add column if not exists qty_ordered int;      -- null = neupravené
+alter table vajicka.entries add column if not exists created_at timestamptz;
+update vajicka.entries set created_at = updated_at where created_at is null;
+alter table vajicka.entries alter column created_at set default now();
+alter table vajicka.orders add column if not exists delivered_qty int;
+alter table vajicka.orders add column if not exists delivery_adjusted_at timestamptz;
+alter table vajicka.orders add column if not exists delivery_request_id bigint;
+alter table vajicka.orders add column if not exists delivery_error text;
+
 alter table vajicka.settings enable row level security;
 alter table vajicka.people   enable row level security;
 alter table vajicka.orders   enable row level security;
@@ -212,7 +222,7 @@ language plpgsql stable as $$
 declare
   o vajicka.orders;
   rows jsonb;
-  tq int; tc bigint; uc int; ucents bigint; n int;
+  tq int; tc bigint; uc int; ucents bigint; n int; oq int; rc bigint;
   lc date := vajicka.last_closed();
 begin
   select * into o from vajicka.orders where delivery_date = k;
@@ -220,20 +230,23 @@ begin
 
   select coalesce(jsonb_agg(jsonb_build_object(
            'personId', x.person_id, 'name', x.name, 'qty', x.qty, 'cents', x.cents,
-           'paid', x.due = 0, 'paidCents', x.paid_cents, 'dueCents', x.due,
+           'paid', x.due = 0 and x.qty > 0, 'paidCents', x.paid_cents, 'dueCents', x.due,
+           'orderedQty', x.ordered, 'refundCents', x.refund,
            'paidAt', x.paid_at, 'paidByName', coalesce(x.paid_by_name, ''))
            order by x.name collate "und-x-icu"), '[]'::jsonb),
          coalesce(sum(x.qty), 0), coalesce(sum(x.cents), 0),
-         count(*) filter (where x.due > 0), coalesce(sum(x.due), 0), count(*)
-    into rows, tq, tc, uc, ucents, n
+         count(*) filter (where x.due > 0), coalesce(sum(x.due), 0), count(*) filter (where x.qty > 0),
+         coalesce(sum(x.ordered), 0), coalesce(sum(x.refund), 0)
+    into rows, tq, tc, uc, ucents, n, oq, rc
   from (
-    select y.*, greatest(y.cents - y.paid_cents, 0) as due from (
-    select e.person_id, p.name, e.qty, e.paid_cents, e.paid_at, pb.name as paid_by_name,
+    select y.*, greatest(y.cents - y.paid_cents, 0) as due, greatest(y.paid_cents - y.cents, 0) as refund from (
+    select e.person_id, p.name, e.qty, coalesce(e.qty_ordered, e.qty) as ordered,
+           e.paid_cents, e.paid_at, pb.name as paid_by_name,
            round(e.qty * o.pack_price_cents::numeric / o.pack_size)::bigint as cents
     from vajicka.entries e
     join vajicka.people p on p.id = e.person_id
     left join vajicka.people pb on pb.id = e.paid_by
-    where e.delivery_date = k and e.qty > 0
+    where e.delivery_date = k and coalesce(e.qty_ordered, e.qty) > 0
   ) y) x;
 
   return jsonb_build_object(
@@ -244,6 +257,9 @@ begin
     'rows', rows, 'totalQty', tq, 'totalCents', tc,
     'packs', round(tq::numeric / o.pack_size, 2),
     'unpaidCount', uc, 'unpaidCents', ucents, 'peopleCount', n,
+    'orderedQty', oq, 'refundCents', rc,
+    'delivery', case when o.delivery_adjusted_at is not null then jsonb_build_object(
+      'deliveredQty', o.delivered_qty, 'adjustedAt', o.delivery_adjusted_at, 'error', o.delivery_error) end,
     'teams', jsonb_build_object('sentAt', o.teams_sent_at, 'error', o.teams_error)
   );
 end $$;
@@ -302,7 +318,9 @@ begin
 
   if jsonb_array_length(sm->'rows') > 0 then
     select jsonb_agg(jsonb_build_object('title', r->>'name',
-             'value', (r->>'qty') || ' ks – ' || vajicka.eur((r->>'cents')::bigint)
+             'value', (r->>'qty') || ' ks'
+                      || case when (r->>'orderedQty')::int <> (r->>'qty')::int then ' (objednané ' || (r->>'orderedQty') || ')' else '' end
+                      || ' – ' || vajicka.eur((r->>'cents')::bigint)
                       || case when (r->>'paid')::bool then ' ✅'
                               when (r->>'paidCents')::int > 0 then ' (doplatiť ' || vajicka.eur((r->>'dueCents')::bigint) || ')'
                               else '' end))
@@ -385,6 +403,14 @@ begin
   where r.id = o.reminder_request_id and (r.error_msg is not null or r.status_code >= 300);
   update vajicka.orders o set reminder_request_id = null
   from net._http_response r where r.id = o.reminder_request_id;
+
+  update vajicka.orders o set
+    delivery_error = coalesce(r.error_msg, 'Teams odpovedal ' || r.status_code || ': ' || left(coalesce(r.content, ''), 200)),
+    delivery_request_id = null
+  from net._http_response r
+  where r.id = o.delivery_request_id and (r.error_msg is not null or r.status_code >= 300);
+  update vajicka.orders o set delivery_request_id = null
+  from net._http_response r where r.id = o.delivery_request_id;
 exception when undefined_table or invalid_schema_name then
   null; -- pg_net nie je nainštalovaný
 end $$;
@@ -587,6 +613,167 @@ begin
   return jsonb_build_object('ok', true, 'sentAt', vajicka.cas());
 end $$;
 
+-- ---------- Úprava podľa skutočnej dodávky ----------
+
+-- Rozdelenie dodaných vajíčok „dookola po baleniach“: v každom kole dostane
+-- jedno balenie každý, kto ešte chce viac; v poslednom kole má prednosť,
+-- kto sa objednal skôr. Vychádza z pôvodnej objednávky (aj pri opakovanej úprave).
+create or replace function vajicka.allocate(k date, delivered int) returns jsonb
+language plpgsql stable as $$
+declare
+  o vajicka.orders;
+  ids uuid[];
+  names text[];
+  wanted int[];
+  given int[];
+  packs int;
+  r int := 1;
+  i int;
+  any_more bool;
+begin
+  select * into o from vajicka.orders where delivery_date = k;
+  packs := delivered / o.pack_size;
+  select array_agg(e.person_id order by e.created_at, e.person_id),
+         array_agg(p.name order by e.created_at, e.person_id),
+         array_agg(coalesce(e.qty_ordered, e.qty) / o.pack_size order by e.created_at, e.person_id)
+    into ids, names, wanted
+  from vajicka.entries e join vajicka.people p on p.id = e.person_id
+  where e.delivery_date = k and coalesce(e.qty_ordered, e.qty) > 0;
+  if ids is null then return '[]'::jsonb; end if;
+  given := array_fill(0, array[array_length(ids, 1)]);
+
+  while packs > 0 loop
+    any_more := false;
+    for i in 1 .. array_length(ids, 1) loop
+      exit when packs = 0;
+      if wanted[i] >= r then
+        given[i] := given[i] + 1;
+        packs := packs - 1;
+        any_more := true;
+      end if;
+    end loop;
+    exit when not any_more;
+    r := r + 1;
+  end loop;
+
+  return (select jsonb_agg(jsonb_build_object('personId', ids[g.n], 'name', names[g.n],
+            'orderedQty', wanted[g.n] * o.pack_size, 'qty', given[g.n] * o.pack_size) order by names[g.n] collate "und-x-icu")
+          from generate_series(1, array_length(ids, 1)) g(n));
+end $$;
+
+-- Správa do Teams po úprave: označí tých, ktorým sa objednávka zmenila
+create or replace function vajicka.delivery_payload(k date) returns jsonb
+language plpgsql stable as $$
+declare
+  o vajicka.orders;
+  sm jsonb := vajicka.summary(k);
+  lines text;
+  entities jsonb;
+  body jsonb;
+begin
+  select * into o from vajicka.orders where delivery_date = k;
+  select string_agg(
+           case when p.email <> '' then '<at>' || p.name || '</at>' else '**' || p.name || '**' end
+           || ': ' || (r->>'orderedQty') || ' → **' || (r->>'qty') || ' ks** (' || vajicka.eur((r->>'cents')::bigint) || ')'
+           || case when (r->>'refundCents')::int > 0 then ' – vrátime ' || vajicka.eur((r->>'refundCents')::bigint) else '' end,
+           E'\n\n' order by r->>'name' collate "und-x-icu"),
+         coalesce(jsonb_agg(jsonb_build_object('type', 'mention', 'text', '<at>' || p.name || '</at>',
+           'mentioned', jsonb_build_object('id', p.email, 'name', p.name))) filter (where p.email <> ''), '[]'::jsonb)
+    into lines, entities
+  from jsonb_array_elements(sm->'rows') r
+  join vajicka.people p on p.id = (r->>'personId')::uuid
+  where (r->>'qty')::int <> (r->>'orderedQty')::int;
+
+  body := jsonb_build_array(
+    jsonb_build_object('type', 'TextBlock', 'size', 'Large', 'weight', 'Bolder', 'wrap', true,
+      'text', '🥚 Upravená objednávka – streda ' || vajicka.fdate(k)),
+    jsonb_build_object('type', 'TextBlock', 'wrap', true,
+      'text', 'Farmár dodal **' || o.delivered_qty || ' ks** z objednaných ' || (sm->>'orderedQty')
+              || ' ks. Vajíčka sme rozdelili dookola po baleniach, aby sa ušlo každému.'));
+  if lines is not null then
+    body := body || jsonb_build_array(
+      jsonb_build_object('type', 'TextBlock', 'wrap', true, 'weight', 'Bolder', 'text', 'Upravené objednávky:'),
+      jsonb_build_object('type', 'TextBlock', 'wrap', true, 'text', lines),
+      jsonb_build_object('type', 'TextBlock', 'wrap', true, 'isSubtle', true, 'text', 'Ostatní dostanú všetko, čo si objednali.'));
+  end if;
+  return vajicka.wrap_card(body, entities, 'Otvoriť súhrn');
+end $$;
+
+-- Návrh rozdelenia (nič neukladá)
+create or replace function public.vj_delivery_preview(p_code text, p_pin text, p_id date, p_delivered int) returns jsonb
+language plpgsql security definer set search_path = vajicka, pg_temp as $$
+declare
+  o vajicka.orders;
+  ordered int;
+begin
+  perform vajicka.auth(p_code);
+  perform vajicka.admin(p_pin);
+  select * into o from vajicka.orders where delivery_date = p_id;
+  if not found then perform vajicka.fail(404, 'Objednávka neexistuje'); end if;
+  if vajicka.cas() < o.deadline then perform vajicka.fail(409, 'Dodávku možno upraviť až po uzávierke'); end if;
+  select coalesce(sum(coalesce(qty_ordered, qty)), 0) into ordered from vajicka.entries where delivery_date = p_id;
+  if p_delivered is null or p_delivered < 0 or p_delivered % o.pack_size <> 0 then
+    perform vajicka.fail(400, 'Dodané množstvo musí byť po ' || o.pack_size || ' ks');
+  end if;
+  if p_delivered > ordered then
+    perform vajicka.fail(400, 'Dodaných nemôže byť viac, ako sa objednalo (' || ordered || ' ks)');
+  end if;
+  return jsonb_build_object('deliveredQty', p_delivered, 'orderedQty', ordered, 'packSize', o.pack_size,
+    'packPriceCents', o.pack_price_cents, 'rows', vajicka.allocate(p_id, p_delivered));
+end $$;
+
+-- Potvrdenie: uloží pridelené množstvá (návrh, prípadne ručne upravený) a pošle správu do Teams
+create or replace function public.vj_delivery_confirm(p_code text, p_pin text, p_id date, p_delivered int, p_alloc jsonb) returns jsonb
+language plpgsql security definer set search_path = vajicka, pg_temp as $$
+declare
+  o vajicka.orders;
+  a record;
+  total int := 0;
+  rid bigint;
+begin
+  perform public.vj_delivery_preview(p_code, p_pin, p_id, p_delivered);   -- rovnaké kontroly
+  select * into o from vajicka.orders where delivery_date = p_id;
+
+  for a in
+    select (x->>'personId')::uuid as person_id, (x->>'qty')::int as qty, coalesce(e.qty_ordered, e.qty) as ordered
+    from jsonb_array_elements(coalesce(p_alloc, '[]'::jsonb)) x
+    left join vajicka.entries e on e.delivery_date = p_id and e.person_id = (x->>'personId')::uuid
+  loop
+    if a.ordered is null then perform vajicka.fail(400, 'Osoba v rozdelení nemá objednávku'); end if;
+    if a.qty is null or a.qty < 0 or a.qty % o.pack_size <> 0 or a.qty > a.ordered then
+      perform vajicka.fail(400, 'Pridelené množstvo musí byť po ' || o.pack_size || ' ks a najviac toľko, koľko si kto objednal');
+    end if;
+    total := total + a.qty;
+  end loop;
+  if total <> p_delivered then
+    perform vajicka.fail(400, 'Rozdelených je ' || total || ' ks, dodaných ' || p_delivered || ' ks – súčet musí sedieť');
+  end if;
+  if (select count(*) from jsonb_array_elements(p_alloc)) <>
+     (select count(*) from vajicka.entries where delivery_date = p_id and coalesce(qty_ordered, qty) > 0) then
+    perform vajicka.fail(400, 'Rozdelenie musí obsahovať všetkých, ktorí si objednali');
+  end if;
+
+  update vajicka.entries e set
+    qty_ordered = coalesce(e.qty_ordered, e.qty),
+    qty = (x->>'qty')::int,
+    paid = e.paid_cents >= round((x->>'qty')::int * o.pack_price_cents::numeric / o.pack_size) and (x->>'qty')::int > 0,
+    updated_at = now()
+  from jsonb_array_elements(p_alloc) x
+  where e.delivery_date = p_id and e.person_id = (x->>'personId')::uuid;
+  -- dodané všetko = späť na pôvodné objednávky
+  if p_delivered = (select sum(coalesce(qty_ordered, qty)) from vajicka.entries where delivery_date = p_id) then
+    update vajicka.entries set qty_ordered = null where delivery_date = p_id;
+  end if;
+
+  update vajicka.orders set delivered_qty = p_delivered, delivery_adjusted_at = vajicka.cas(), delivery_error = null
+  where delivery_date = p_id;
+  rid := vajicka.http_post(vajicka.delivery_payload(p_id));
+  update vajicka.orders set delivery_request_id = rid,
+    delivery_error = case when rid is null then 'Nie je nastavená adresa Teams webhooku (teams_webhook_url)' end
+  where delivery_date = p_id;
+  return vajicka.summary(p_id);
+end $$;
+
 -- ---------- Správa ľudí ----------
 
 create or replace function public.vj_admin_people(p_code text, p_pin text) returns jsonb
@@ -697,7 +884,8 @@ begin
     'vj_set_qty(text,date,uuid,int)', 'vj_set_paid(text,date,uuid,uuid,bool)', 'vj_set_remind(text,uuid,uuid,bool)',
     'vj_send_summary(text,date)', 'vj_send_reminder(text,text)', 'vj_admin_people(text,text)',
     'vj_admin_add(text,text,text,text)', 'vj_admin_bulk(text,text,text)',
-    'vj_admin_update(text,text,uuid,text,text,bool)', 'vj_admin_remove(text,text,uuid)'] loop
+    'vj_admin_update(text,text,uuid,text,text,bool)', 'vj_admin_remove(text,text,uuid)',
+    'vj_delivery_preview(text,text,date,int)', 'vj_delivery_confirm(text,text,date,int,jsonb)'] loop
     execute format('revoke all on function public.%s from public', f);
     if exists (select 1 from pg_roles where rolname = 'anon') then
       execute format('grant execute on function public.%s to anon, authenticated', f);

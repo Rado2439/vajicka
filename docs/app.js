@@ -66,7 +66,9 @@ const isSupplier = () => state.me && state.me === state.boot?.supplierId;
 const supplierName = () => state.boot?.people.find((p) => p.id === state.boot.supplierId)?.name || '—';
 const cents = (qty) => Math.round((qty * state.boot.config.packPriceCents) / state.boot.config.packSize);
 // Stav platby riadku: zaplatené / doplatiť X / nezaplatené
-const payStatus = (r) => r.paid ? { text: 'zaplatené', cls: '' }
+const payStatus = (r) => r.qty === 0 ? { text: r.paidCents > 0 ? `vrátiť ${eur(r.refundCents)}` : 'nedodané', cls: r.paidCents > 0 ? 'stav--pozor' : '' }
+  : r.refundCents > 0 ? { text: `vrátiť ${eur(r.refundCents)}`, cls: 'stav--pozor' }
+  : r.paid ? { text: 'zaplatené', cls: '' }
   : r.paidCents > 0 ? { text: `doplatiť ${eur(r.dueCents)}`, cls: 'stav--pozor' }
   : { text: 'nezaplatené', cls: 'stav--pozor' };
 // Koľko kusov je už zaplatených (pod to sa objednávka nedá znížiť)
@@ -145,13 +147,15 @@ const VIEWS = {
     const lastCard = myLast ? `<div class="card ${myLast.paid ? 'card--plocha' : ''}">
         <p class="kicker">Minulý týždeň · ${fmtShort(lastClosed.deliveryDate)}</p>
         <div class="total" style="border:0;margin:0;padding:0">
-          <span>${myLast.qty} ks</span><strong>${eur(myLast.cents)}</strong>
+          <span>${myLast.qty} ks${myLast.orderedQty !== myLast.qty ? ` <span class="small muted">(objednané ${myLast.orderedQty}, farmár dodal menej)</span>` : ''}</span><strong>${eur(myLast.cents)}</strong>
         </div>
-        <p class="small muted" style="margin:6px 0 14px">${myLast.paid ? 'Zaplatené, ďakujeme.'
+        <p class="small muted" style="margin:6px 0 14px">${myLast.refundCents > 0 ? `Zaplatil si viac – ${esc(supplierName())} ti vráti ${eur(myLast.refundCents)}.`
+          : myLast.qty === 0 ? 'Na teba tento týždeň nezvýšilo, nič neplatíš.'
+          : myLast.paid ? 'Zaplatené, ďakujeme.'
           : myLast.paidCents > 0 ? `Zaplatené ${eur(myLast.paidCents)}, doplatiť ${eur(myLast.dueCents)} – ${esc(supplierName())}`
           : `Zaplať: ${esc(supplierName())}`}</p>
-        ${payToggle({ checked: myLast.paid, disabled: myLast.paid && !isSupplier(), label: myLast.paidCents > 0 && !myLast.paid ? 'Doplatil som' : 'Zaplatil som', data: 'id="paidLast"' })}
-        ${myLast.paid ? '' : ` <span class="stav stav--pozor" style="margin-left:8px">${payStatus(myLast).text}</span>`}
+        ${myLast.qty > 0 && !myLast.refundCents ? payToggle({ checked: myLast.paid, disabled: myLast.paid && !isSupplier(), label: myLast.paidCents > 0 && !myLast.paid ? 'Doplatil som' : 'Zaplatil som', data: 'id="paidLast"' }) : ''}
+        ${myLast.paid && !myLast.refundCents ? '' : ` <span class="stav ${payStatus(myLast).cls}" style="margin-left:8px">${payStatus(myLast).text}</span>`}
       </div>` : '';
 
     if (!b.openOrderId) {
@@ -250,22 +254,95 @@ const VIEWS = {
     main.querySelectorAll('.hist button').forEach((btn) => btn.onclick = () => { state.histId = btn.dataset.id; go('history'); });
   },
 
+  // --- úprava podľa skutočnej dodávky (správca s PIN-om) ---
+  async delivery() {
+    const id = state.deliveryId;
+    const o = await api('GET', `/api/orders/${id}`);
+    const ps = o.packSize;
+    const top = hero('Farmár dodal', 'menej vajíčok', `Streda ${fmtDay(o.deliveryDate)} · objednaných ${o.orderedQty} ks`);
+    // prvý návrh: dodané z poslednej úpravy, inak o balenie menej ako objednané
+    if (state.deliveredDraft == null) state.deliveredDraft = o.delivery ? o.delivery.deliveredQty : Math.max(0, o.orderedQty - ps);
+    let prev;
+    try { prev = await api('POST', `/api/orders/${id}/delivery/preview`, { delivered: state.deliveredDraft }); }
+    catch (e) {
+      if (e.status === 403) return pinForm(top + '<p class="muted">Úpravu podľa dodávky robí len správca.</p>', () => go('delivery'));
+      if (e.status !== 400) throw e;
+      state.deliveredDraft = o.orderedQty;
+      prev = await api('POST', `/api/orders/${id}/delivery/preview`, { delivered: state.deliveredDraft });
+    }
+    if (!state.alloc) state.alloc = prev.rows.map((r) => ({ ...r }));
+
+    const render = () => {
+      const sum = state.alloc.reduce((t, r) => t + r.qty, 0);
+      const left = state.deliveredDraft - sum;
+      main.innerHTML = `<button class="back" id="back">← Späť na súhrn</button>${top}
+        <div class="card">
+          <p class="kicker">1 · Koľko farmár skutočne dodal</p>
+          <div class="stepper" style="justify-content:flex-start">
+            <button class="round" id="dm" aria-label="Ubrať ${ps} kusov" ${state.deliveredDraft <= 0 ? 'disabled' : ''}>−${ps}</button>
+            <div class="qty"><output class="qty__num" id="dq">${state.deliveredDraft}</output><span class="qty__unit">z ${o.orderedQty} ks</span></div>
+            <button class="round" id="dp" aria-label="Pridať ${ps} kusov" ${state.deliveredDraft >= o.orderedQty ? 'disabled' : ''}>+${ps}</button>
+          </div>
+          <p class="small muted" style="margin:0">Pri zmene dodaného množstva appka hneď navrhne nové rozdelenie.</p>
+        </div>
+        <div class="card">
+          <p class="kicker">2 · Rozdelenie dookola po baleniach</p>
+          <p class="small muted" style="margin:0 0 12px">Každý dostane v každom kole jedno balenie, kým sa neminú. V poslednom kole má prednosť, kto sa objednal skôr. Návrh môžeš ručne upraviť.</p>
+          <table class="tbl">
+            <thead><tr><th>Meno</th><th class="num">Objednal</th><th class="num">Dostane</th></tr></thead>
+            <tbody>${state.alloc.map((r, i) => `<tr class="${r.qty < r.orderedQty ? 'unpaid' : 'paid'}">
+              <td class="name"><b>${esc(r.name)}</b>${r.qty < r.orderedQty ? `<small>o ${r.orderedQty - r.qty} ks menej</small>` : ''}</td>
+              <td class="num">${r.orderedQty}</td>
+              <td class="num"><div class="paycell">
+                <button class="chip" data-i="${i}" data-d="-1" ${r.qty <= 0 ? 'disabled' : ''} aria-label="Ubrať ${esc(r.name)}">−</button>
+                <b style="min-width:2.4ch;text-align:right">${r.qty}</b>
+                <button class="chip" data-i="${i}" data-d="1" ${r.qty >= r.orderedQty || left <= 0 ? 'disabled' : ''} aria-label="Pridať ${esc(r.name)}">+</button>
+              </div></td></tr>`).join('')}</tbody>
+            <tfoot><tr><td>Spolu</td><td class="num">${o.orderedQty}</td><td class="num">${sum}</td></tr></tfoot>
+          </table>
+          <p class="${left === 0 ? 'stav' : 'alert'}" style="display:inline-block;margin:14px 0 0">${left === 0 ? 'Rozdelené všetko ✓'
+            : left > 0 ? `Zostáva rozdeliť ${left} ks` : `Rozdelených je o ${-left} ks viac, ako farmár dodal`}</p>
+        </div>
+        <div class="btn-row">
+          <button class="kros-btn" id="confirm" ${left !== 0 ? 'disabled' : ''}>Potvrdiť a poslať do Teams</button>
+          <button class="kros-btn kros-btn--obrys" id="reset">Obnoviť návrh</button>
+        </div>
+        <p class="small muted">Po potvrdení sa objednávky upravia, prepočítajú sa sumy a kto zaplatil viac, uvidí „vrátiť“. Do Teams chatu príde správa s označením tých, ktorým sa objednávka zmenila.</p>`;
+      $('#back').onclick = () => { state.alloc = null; state.deliveredDraft = null; state.summaryId = id; go('summary'); };
+      const change = async (d) => {
+        state.deliveredDraft = Math.min(o.orderedQty, Math.max(0, state.deliveredDraft + d));
+        const p = await api('POST', `/api/orders/${id}/delivery/preview`, { delivered: state.deliveredDraft });
+        state.alloc = p.rows.map((r) => ({ ...r }));
+        render();
+      };
+      $('#dm').onclick = () => change(-ps);
+      $('#dp').onclick = () => change(ps);
+      $('#reset').onclick = () => { state.alloc = prev.rows.map((r) => ({ ...r })); change(0); };
+      main.querySelectorAll('.chip[data-i]').forEach((b) => b.onclick = () => {
+        const r = state.alloc[+b.dataset.i];
+        r.qty = Math.min(r.orderedQty, Math.max(0, r.qty + ps * +b.dataset.d));
+        render();
+      });
+      $('#confirm').onclick = async (e) => {
+        if (!confirm(`Upraviť objednávky na ${state.deliveredDraft} ks a poslať správu do Teams?`)) return;
+        e.target.disabled = true;
+        try {
+          await api('POST', `/api/orders/${id}/delivery`, { delivered: state.deliveredDraft, alloc: state.alloc.map((r) => ({ personId: r.personId, qty: r.qty })) });
+          state.alloc = null; state.deliveredDraft = null; state.summaryId = id;
+          go('summary');
+        } catch (er) { alert(er.message); e.target.disabled = false; }
+      };
+    };
+    render();
+  },
+
   // --- správa ľudí ---
   async admin() {
     let data;
     try { data = await api('GET', '/api/admin/people'); }
     catch (e) {
       if (e.status !== 403) throw e;
-      main.innerHTML = `${hero('Správa', 'ľudí', 'Táto časť je chránená PIN-om.')}
-        <form class="card" id="pinf" style="max-width:420px">
-          <label class="kicker" for="pin">Servisný PIN</label>
-          <div class="btn-row"><input class="kros-vstup" type="password" id="pin" autocomplete="off" style="flex:1">
-          <button class="kros-btn">Pokračovať</button></div>
-          ${state.adminPin ? '<p class="alert" style="margin:12px 0 0">Nesprávny PIN.</p>' : ''}
-        </form>`;
-      $('#pin').focus();
-      $('#pinf').onsubmit = (ev) => { ev.preventDefault(); state.adminPin = $('#pin').value; store.set(LS_PIN, state.adminPin); go('admin'); };
-      return;
+      return pinForm(hero('Správa', 'ľudí', 'Táto časť je chránená PIN-om.'), () => go('admin'));
     }
     main.innerHTML = `${hero('Správa', 'ľudí', 'Pridaj alebo odober ľudí a urč zabezpečovateľa. E-mail slúži na označenie (@mention) v Teams.')}
       <div class="card">
@@ -341,6 +418,19 @@ function reminderCard(r) {
   </div>`;
 }
 
+// PIN pre správcu (správa ľudí, úprava dodávky)
+function pinForm(top, done) {
+  main.innerHTML = `${top}
+    <form class="card" id="pinf" style="max-width:420px">
+      <label class="kicker" for="pin">Servisný PIN</label>
+      <div class="btn-row"><input class="kros-vstup" type="password" id="pin" autocomplete="off" style="flex:1">
+      <button class="kros-btn">Pokračovať</button></div>
+      ${state.adminPin ? '<p class="alert" style="margin:12px 0 0">Nesprávny PIN.</p>' : ''}
+    </form>`;
+  $('#pin').focus();
+  $('#pinf').onsubmit = (ev) => { ev.preventDefault(); state.adminPin = $('#pin').value; store.set(LS_PIN, state.adminPin); done(); };
+}
+
 // ---------- platba v objednávke ----------
 
 function payCardHtml(mine) {
@@ -380,14 +470,26 @@ function summaryHtml(o, interactive) {
     const by = r.paid && r.paidByName && r.paidByName !== r.name ? `označil ${r.paidByName}` : '';
     return `<tr class="${r.paid ? 'paid' : 'unpaid'} ${mine ? 'me' : ''}">
       <td class="name"><b>${esc(r.name)}</b>${r.personId === state.boot.supplierId ? '<small>zabezpečovateľ</small>' : ''}${mine ? '<small>to si ty</small>' : ''}</td>
-      <td class="num">${r.qty}</td>
+      <td class="num">${r.qty}${r.orderedQty !== r.qty ? `<small class="muted" style="display:block">z ${r.orderedQty}</small>` : ''}</td>
       <td class="num">${eur(r.cents)}${!r.paid && r.paidCents > 0 ? `<small class="muted" style="display:block">doplatiť ${eur(r.dueCents)}</small>` : ''}</td>
       <td><div class="paycell">
         <span class="stav ${payStatus(r).cls} hide-m" title="${esc(by)}">${payStatus(r).text}</span>
-        ${payToggle({ checked: r.paid, disabled: !(canPay && (mine || sup)) || (r.paid && !sup), label: mine ? 'Zaplatil som' : `Zaplatil ${r.name}`, data: `data-pid="${r.personId}"` }).replace('<span class="pay__label">', '<span class="pay__label sr">')}
+        ${r.refundCents > 0 && sup && canPay ? `<button class="chip" data-refund="${r.personId}" title="Peniaze som vrátila">Vrátené</button>`
+          : r.qty === 0 || r.refundCents > 0 ? ''
+          : payToggle({ checked: r.paid, disabled: !(canPay && (mine || sup)) || (r.paid && !sup), label: mine ? 'Zaplatil som' : `Zaplatil ${r.name}`, data: `data-pid="${r.personId}"` }).replace('<span class="pay__label">', '<span class="pay__label sr">')}
       </div></td>
     </tr>`;
   }).join('');
+  const delivery = o.status !== 'closed' ? '' : o.delivery ? `<div class="card card--plocha teams" style="margin-bottom:20px">
+      <div><b style="font-weight:600">Upravené podľa skutočnej dodávky</b><br>
+        <span class="small muted">Farmár dodal ${o.delivery.deliveredQty} z ${o.orderedQty} objednaných ks.${o.refundCents > 0 ? ` Vrátiť spolu ${eur(o.refundCents)}.` : ''}</span></div>
+      ${interactive ? '<button class="kros-btn kros-btn--obrys" id="deliveryBtn">Upraviť znova</button>' : ''}
+      ${o.delivery.error ? `<p class="alert" style="width:100%;margin:0">Teams: ${esc(o.delivery.error)}</p>` : ''}
+    </div>` : interactive ? `<div class="card teams" style="margin-bottom:20px">
+      <div><b style="font-weight:600">Farmár dodal menej?</b><br>
+        <span class="small muted">Správca zadá skutočné množstvo a appka ho rozdelí dookola po baleniach.</span></div>
+      <button class="kros-btn kros-btn--obrys" id="deliveryBtn">Upraviť podľa dodávky</button>
+    </div>` : '';
   const teams = o.status === 'closed' ? `<div class="card card--plocha teams">
       <div style="display:flex;gap:14px;align-items:center">
         <span class="teams__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span>
@@ -399,6 +501,7 @@ function summaryHtml(o, interactive) {
       ${o.teams.error ? `<p class="alert" style="width:100%;margin:0">Chyba: ${esc(o.teams.error)}</p>` : ''}
     </div>` : '';
   return `
+    ${delivery}
     <div class="stats">
       <div class="stat"><span>Spolu</span><b>${o.totalQty} ks</b><small>${o.rows.length} ľudí</small></div>
       <div class="stat"><span>Balení po ${o.packSize} ks</span><b>${fmtPacks(o.packs)}</b><small>${whole ? 'celé balenia' : `do celého chýba ${missing} ks`}</small></div>
@@ -409,7 +512,7 @@ function summaryHtml(o, interactive) {
       <table class="tbl">
         <thead><tr><th>Meno</th><th class="num">Ks</th><th class="num">Suma</th><th class="num">Zaplatené</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td>Spolu</td><td class="num">${o.totalQty}</td><td class="num">${eur(o.totalCents)}</td><td></td></tr></tfoot>
+        <tfoot><tr><td>Spolu</td><td class="num">${o.totalQty}${o.orderedQty !== o.totalQty ? `<small class="muted" style="display:block">z ${o.orderedQty}</small>` : ''}</td><td class="num">${eur(o.totalCents)}</td><td></td></tr></tfoot>
       </table>
       <p class="small muted" style="margin:14px 0 0">${!interactive || !o.editablePayments ? 'Len na čítanie.'
         : sup ? 'Si zabezpečovateľ – platbu môžeš označiť za hocikoho.' : `Platbu si označ pri svojom mene. Platí sa: ${esc(supplierName())}.`}</p>
@@ -420,6 +523,13 @@ function summaryHtml(o, interactive) {
 function bindSummary(o) {
   main.querySelectorAll('.tbl input[type=checkbox]').forEach((cb) => cb.onchange = async () => {
     try { await markPaid(o.id, cb.dataset.pid, cb.checked); } catch (e) { alert(e.message); }
+    go('summary', { keepScroll: true });
+  });
+  const db = $('#deliveryBtn');
+  if (db) db.onclick = () => { state.deliveryId = o.id; state.alloc = null; state.deliveredDraft = null; go('delivery'); };
+  main.querySelectorAll('[data-refund]').forEach((b) => b.onclick = async () => {
+    if (!confirm('Peniaze sú vrátené?')) return;
+    try { await markPaid(o.id, b.dataset.refund, true); } catch (e) { alert(e.message); }
     go('summary', { keepScroll: true });
   });
   const tb = $('#teamsBtn');

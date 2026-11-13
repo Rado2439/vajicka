@@ -49,6 +49,10 @@
     ['POST', /^\/api\/admin\/people\/bulk$/, (c, m, b) => rpc('vj_admin_bulk', { p_code: c.code, p_pin: c.pin, p_text: b.text })],
     ['PUT', /^\/api\/admin\/people\/([^/]+)$/, (c, [pid], b) => rpc('vj_admin_update', {
       p_code: c.code, p_pin: c.pin, p_person: pid, p_name: b.name ?? null, p_email: b.email ?? null, p_supplier: !!b.supplier })],
+    ['POST', /^\/api\/orders\/([\d-]+)\/delivery\/preview$/, (c, [id], b) =>
+      rpc('vj_delivery_preview', { p_code: c.code, p_pin: c.pin, p_id: id, p_delivered: b.delivered })],
+    ['POST', /^\/api\/orders\/([\d-]+)\/delivery$/, (c, [id], b) =>
+      rpc('vj_delivery_confirm', { p_code: c.code, p_pin: c.pin, p_id: id, p_delivered: b.delivered, p_alloc: b.alloc })],
     ['DELETE', /^\/api\/admin\/people\/([^/]+)$/, (c, [pid]) => rpc('vj_admin_remove', { p_code: c.code, p_pin: c.pin, p_person: pid })],
   ];
 
