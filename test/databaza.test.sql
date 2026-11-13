@@ -102,7 +102,11 @@ select pg_temp.eq(vj_admin_bulk('TEST', null, E'Eva Nová; eva@firma.sk\nIvo Sta
 select pg_temp.eq((select email from vajicka.people where name = 'Ivo Starý'), 'ivo@firma.sk', 'e-mail z „Meno <email>“');
 update vajicka.settings set admin_pin = '1234';
 select pg_temp.fails($$select vj_admin_people('TEST', '0000')$$, '403', 'nesprávny PIN');
-select pg_temp.eq(jsonb_array_length(vj_admin_people('TEST', '1234')->'people'), 6, 'zoznam ľudí so správnym PIN');
+select pg_temp.fails($$select vj_admin_add('TEST', null, 'Cudzí Človek', '')$$, '403', 'bez PIN-u nikto nepridá človeka');
+select pg_temp.fails($$select vj_admin_bulk('TEST', '0000', 'Cudzí Človek')$$, '403', 'so zlým PIN-om nikto nepridá hromadne');
+select pg_temp.eq((select count(*) from vajicka.people where name = 'Cudzí Človek')::int, 0, 'cudzí človek nepridaný');
+select pg_temp.eq(vj_admin_add('TEST', '1234', 'Nová Kolegyňa', ''), '{"ok": true}'::jsonb, 'so správnym PIN-om sa pridá');
+select pg_temp.eq(jsonb_array_length(vj_admin_people('TEST', '1234')->'people'), 7, 'zoznam ľudí so správnym PIN');
 select pg_temp.fails(format($$select vj_admin_remove('TEST', '1234', %L)$$, (select jan from ids)), '409', 'zabezpečovateľa nemožno odobrať');
 select pg_temp.eq(jsonb_array_length(vj_orders('TEST')), 2, 'zoznam objednávok');
 

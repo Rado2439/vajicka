@@ -123,7 +123,7 @@ const VIEWS = {
           <span>${esc(p.name)}${p.id === state.boot.supplierId ? '<br><span class="small muted">zabezpečovateľ</span>' : ''}</span>
         </button>`).join('')}</div>
       ${state.boot.people.length
-        ? '<p class="small muted" style="margin-top:20px">Nie si v zozname? <a href="#" data-go="admin">Pridaj sa</a>.</p>'
+        ? `<p class="small muted" style="margin-top:20px">Nie si v zozname? Pridá ťa ${esc(supplierName())}.</p>`
         : '<p class="alert">Zoznam je zatiaľ prázdny.</p><p><button class="kros-btn" data-go="admin">Pridať ľudí</button></p>'}`;
     main.querySelectorAll('[data-go]').forEach((a) => a.onclick = (e) => { e.preventDefault(); go('admin'); });
     main.querySelectorAll('.person').forEach((b) => b.onclick = () => {
