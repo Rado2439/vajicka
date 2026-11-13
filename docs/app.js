@@ -345,7 +345,7 @@ function reminderCard(r) {
 
 function payCardHtml(mine) {
   const head = `<p class="kicker">Platba</p>
-    <p style="margin:0 0 14px">Vajíčka zabezpečuje <b>${esc(supplierName())}</b>. Platí sa hotovosťou alebo prevodom.</p>`;
+    <p style="margin:0 0 14px">Vajíčka zabezpečuje <b>${esc(supplierName())}</b>. Platí sa len v hotovosti.</p>`;
   if (!mine) return head + '<p class="small muted" style="margin:0">Platbu označíš, keď si niečo objednáš.</p>';
   const partial = !mine.paid && mine.paidCents > 0;
   return head + `
