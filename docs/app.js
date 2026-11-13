@@ -147,7 +147,7 @@ const VIEWS = {
     const lastCard = myLast ? `<div class="card ${myLast.paid ? 'card--plocha' : ''}">
         <p class="kicker">Minulý týždeň · ${fmtShort(lastClosed.deliveryDate)}</p>
         <div class="total" style="border:0;margin:0;padding:0">
-          <span>${myLast.qty} ks${myLast.orderedQty !== myLast.qty ? ` <span class="small muted">(objednané ${myLast.orderedQty}, farmár dodal menej)</span>` : ''}</span><strong>${eur(myLast.cents)}</strong>
+          <span>${myLast.qty} ks${myLast.orderedQty != null && myLast.orderedQty !== myLast.qty ? ` <span class="small muted">(objednané ${myLast.orderedQty}, farmár dodal menej)</span>` : ''}</span><strong>${eur(myLast.cents)}</strong>
         </div>
         <p class="small muted" style="margin:6px 0 14px">${myLast.refundCents > 0 ? `Zaplatil si viac – ${esc(supplierName())} ti vráti ${eur(myLast.refundCents)}.`
           : myLast.qty === 0 ? 'Na teba tento týždeň nezvýšilo, nič neplatíš.'
@@ -470,7 +470,7 @@ function summaryHtml(o, interactive) {
     const by = r.paid && r.paidByName && r.paidByName !== r.name ? `označil ${r.paidByName}` : '';
     return `<tr class="${r.paid ? 'paid' : 'unpaid'} ${mine ? 'me' : ''}">
       <td class="name"><b>${esc(r.name)}</b>${r.personId === state.boot.supplierId ? '<small>zabezpečovateľ</small>' : ''}${mine ? '<small>to si ty</small>' : ''}</td>
-      <td class="num">${r.qty}${r.orderedQty !== r.qty ? `<small class="muted" style="display:block">z ${r.orderedQty}</small>` : ''}</td>
+      <td class="num">${r.qty}${r.orderedQty != null && r.orderedQty !== r.qty ? `<small class="muted" style="display:block">z ${r.orderedQty}</small>` : ''}</td>
       <td class="num">${eur(r.cents)}${!r.paid && r.paidCents > 0 ? `<small class="muted" style="display:block">doplatiť ${eur(r.dueCents)}</small>` : ''}</td>
       <td><div class="paycell">
         <span class="stav ${payStatus(r).cls} hide-m" title="${esc(by)}">${payStatus(r).text}</span>
@@ -512,7 +512,7 @@ function summaryHtml(o, interactive) {
       <table class="tbl">
         <thead><tr><th>Meno</th><th class="num">Ks</th><th class="num">Suma</th><th class="num">Zaplatené</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td>Spolu</td><td class="num">${o.totalQty}${o.orderedQty !== o.totalQty ? `<small class="muted" style="display:block">z ${o.orderedQty}</small>` : ''}</td><td class="num">${eur(o.totalCents)}</td><td></td></tr></tfoot>
+        <tfoot><tr><td>Spolu</td><td class="num">${o.totalQty}${o.orderedQty != null && o.orderedQty !== o.totalQty ? `<small class="muted" style="display:block">z ${o.orderedQty}</small>` : ''}</td><td class="num">${eur(o.totalCents)}</td><td></td></tr></tfoot>
       </table>
       <p class="small muted" style="margin:14px 0 0">${!interactive || !o.editablePayments ? 'Len na čítanie.'
         : sup ? 'Si zabezpečovateľ – platbu môžeš označiť za hocikoho.' : `Platbu si označ pri svojom mene. Platí sa: ${esc(supplierName())}.`}</p>
